@@ -8,7 +8,7 @@ import numpy as np
 from scipy import signal
 from timeit import default_timer as timer
 import sys
-from processing import createcomplexsinusoid, calculate_spectrum, normalize_complexsignal, detect_signaloffset, plot_noisesignalPSD
+from processing import createcomplexsinusoid, calculate_spectrum, normalize_complexsignal, detect_signaloffset, plot_noisesignalPSD, plot_offsetdetection, detect_signaloffsetv2, check_corrcondition
 
 def printSDRproperties(sdr):
     print("Bandwidth of TX path:", sdr.tx_rf_bandwidth) #Bandwidth of front-end analog filter of TX path
@@ -86,8 +86,9 @@ def ddstone(sdr, dualtune=True, dds_freq_hz = 10000, dds_scale = 0.9):
 
 #modified based on https://github.com/lkk688/AIsensing/blob/main/deeplearning/SDR.py
 class SDR:
-    def __init__(self, SDR_IP, SDR_FC=2000000000, SDR_SAMPLERATE=1e6, SDR_BANDWIDTH=1e6, \
+    def __init__(self, SDR_IP, device='ad9361', SDR_FC=2000000000, SDR_SAMPLERATE=1e6, SDR_BANDWIDTH=1e6, \
                     Rx_CHANNEL=2, Tx_CHANNEL=1):
+        #device='ad9361', 'ad9364', 'Pluto'
     
         self.SDR_IP = SDR_IP # IP address of the TX SDR device
         self.SDR_TX_FREQ = int(SDR_FC) # TX center frequency in Hz,  #2Ghz 2000000000
@@ -98,15 +99,20 @@ class SDR:
         self.SDR_TX_BANDWIDTH = int(SDR_BANDWIDTH) # TX bandwidth (Hz)
         self.SDR_RX_BANDWIDTH = int(SDR_BANDWIDTH) # RX bandwidth (Hz)
         self.num_samples=int(SDR_SAMPLERATE/10) #default save 0.1s data
-        self.sdr = self.setupSDR(fs=SDR_SAMPLERATE, useAD9361=True, Rx_CHANNEL=Rx_CHANNEL, Tx_CHANNEL=Tx_CHANNEL)
+        self.sdr = self.setupSDR(fs=SDR_SAMPLERATE, device=device, Rx_CHANNEL=Rx_CHANNEL, Tx_CHANNEL=Tx_CHANNEL)
 
     #new added
-    def setupSDR(self, fs= 6000000, useAD9361=True, Rx_CHANNEL=2, Tx_CHANNEL=1): #default fs=6Mhz
+    def setupSDR(self, fs= 6000000, device='ad9361', Rx_CHANNEL=2, Tx_CHANNEL=1): #default fs=6Mhz
         # Initialize the SDR device using the Analog Devices driver
-        if useAD9361:
+        if device=='ad9361':
             sdr = adi.ad9361(uri=self.SDR_IP)
-        else:
+        elif device=='ad9364':
             sdr = adi.ad9364(self.SDR_IP)
+        elif device.lower()=='pluto':
+            sdr = adi.Pluto(uri=self.SDR_IP)
+        else:
+            print('device not supported')
+            sdr = None
         
         # Configure the sample rate for both TX and RX
         sdr.sample_rate = fs
@@ -164,9 +170,9 @@ class SDR:
         # Set the RF bandwidth for both TX and RX
         if tx_bandwidth is not None:
             self.sdr.tx_rf_bandwidth = tx_bandwidth
+            self.SDR_TX_BANDWIDTH = tx_bandwidth
         else:
             self.sdr.tx_rf_bandwidth = self.SDR_TX_BANDWIDTH
-            self.SDR_TX_BANDWIDTH = tx_bandwidth
         #self.sdr.rx_rf_bandwidth = self.SDR_TX_BANDWIDTH
 
         # Set the hardware gain for both TX and RX
@@ -246,7 +252,7 @@ class SDR:
         # Clear the receiver buffer to prepare for new data
         self.sdr.rx_destroy_buffer()# clear any data from rx buffer
 
-    def SDR_RX_receive(self, combinerule='drop', normalize=True):
+    def SDR_RX_receive(self, combinerule='drop', normalize=True, remove_dc=True):
         # Receive the samples from the SDR hardware
         x = self.sdr.rx()
 
@@ -262,7 +268,8 @@ class SDR:
 
         # Normalize the signal amplitude if required
         if normalize:
-            a = a / np.max(np.abs(a))
+            #a = a / np.max(np.abs(a))
+            a = normalize_complexsignal(a, remove_dc=remove_dc, max_scale=1)
 
         # Convert the received samples to a PyTorch tensor
         #return torch.tensor(a, dtype=torch.complex64)
@@ -314,7 +321,7 @@ class SDR:
         return alldata0, processtime
 
 
-    def SDR_TX_send(self, SAMPLES, SAMPLES2=None, max_scale=1, normalize=False, leadingzeros=0, cyclic=False):
+    def SDR_TX_send(self, SAMPLES, SAMPLES2=None, max_scale=1, normalize=False, leadingzeros=0, cyclic=False, scale4sdr=True):
         '''
         Transmit the given signal samples through the SDR transmitter.
 
@@ -358,9 +365,15 @@ class SDR:
         # # Scale the signal to the dynamic range expected by the SDR hardware
         # samples *= 2**14  # scale the samples to 16-bit PlutoSDR, for example, expects sample values in the range -2^14 to +2^14
         if normalize:
-            SAMPLES = normalize_complexsignal(SAMPLES, max_scale=max_scale, scale4sdr=True)
+            SAMPLES = normalize_complexsignal(SAMPLES, max_scale=max_scale)
             if SAMPLES2 is not None:
-                SAMPLES2 = normalize_complexsignal(SAMPLES2, max_scale=max_scale, scale4sdr=True)
+                SAMPLES2 = normalize_complexsignal(SAMPLES2, max_scale=max_scale)
+        if scale4sdr:
+            # Scale the signal to the dynamic range expected by the SDR hardware
+            SAMPLES *= 2**14  # scale the samples to 16-bit PlutoSDR, for example, expects sample values in the range -2^14 to +2^14
+            if SAMPLES2 is not None:
+                SAMPLES2 *= 2**14
+
         if leadingzeros >0:
             leading_zeroes = np.zeros(leadingzeros, dtype=np.complex64)  # Leading 500 zeroes for noise floor measurement
             SAMPLES = np.concatenate([leading_zeroes, SAMPLES], axis=0)  # Add the quiet for noise measurements
@@ -396,15 +409,17 @@ class SDR:
         elif signal_type == 'dds':
             ddstone(self.sdr, dualtune=False, dds_freq_hz = f_signal, dds_scale = 0.9)
     
-    def SDR_RXTX_offset(self, SAMPLES, leadingzeros=500, add_td_samples=16, make_plot=True):
+    def SDR_RXTX_offset(self, SAMPLES, leadingzeros=500, add_td_samples=16, tx_gain=-10, rx_gain=10, make_plot=True):
         #add_td_samples: number of additional symbols to cater fordelay spread
+
         out_shape = list(SAMPLES.shape) # store the input tensor shape, [80]
         num_samples = SAMPLES.shape[-1] # number of samples in the input 80
+        SAMPLES = SAMPLES.flatten()
 
         #x_sdr = mysdr(SAMPLES = x_time, SDR_TX_GAIN=-10, SDR_RX_GAIN = 10, add_td_samples = 16, debug=True) # transmit
         self.SDR_TX_stop()
-        self.SDR_TX_setup(cyclic_buffer=True, tx1_gain=-10, tx2_gain=-10)
-        self.SDR_RX_setup(n_SAMPLES=(num_samples+leadingzeros)*3, controlmode='manual', rx1_gain=10, rx2_gain=10) ## set the RX buffer size to 3 times the number of samples
+        self.SDR_TX_setup(cyclic_buffer=True, tx1_gain=tx_gain, tx2_gain=tx_gain)
+        self.SDR_RX_setup(n_SAMPLES=(num_samples+leadingzeros)*3, controlmode='manual', rx1_gain=rx_gain, rx2_gain=rx_gain) ## set the RX buffer size to 3 times the number of samples
         #self.SDR_gain_set(tx_gain=0, rx_gain=30)
         time.sleep(0.3)  # Wait for settings to take effect
 
@@ -414,29 +429,40 @@ class SDR:
         corr_threshold = 0.3
         fails = 0 # how many times the process failed to reach pearson r > self.corr_threshold
         success = 0 #  how many times the process reached pearson r > self.corr_threshold
-        timeout = 10
-        while success == 0:       
+        timeout = 5
+        #rx_samples = np.ones(SAMPLES.shape[0] + add_td_samples, dtype=np.complex64)
+        while success == 0 and fails < timeout:       
             # RX samples 
             rx_samples = self.SDR_RX_receive(combinerule='drop', normalize=False)
-            rx_samples_normalized, rx_TTI, rx_noise, TTI_offset, TTI_corr, corr, SINR = detect_signaloffset(rx_samples, tx_SAMPLES=SAMPLES, num_samples=num_samples, leadingzeros=leadingzeros, add_td_samples=add_td_samples)
+
+            #the use of tx_SAMPLES is for adjust_stdev and perform correlation
+            # rx_samples_normalized, rx_TTI, rx_noise, TTI_offset, TTI_corr, corr, SINR = detect_signaloffset(rx_samples, tx_SAMPLES=SAMPLES, num_samples=num_samples, leadingzeros=leadingzeros, add_td_samples=add_td_samples)
+
+            rx_samples_normalized, rx_TTI, rx_noise, TTI_offset, TTI_corr, corr, SINR = detect_signaloffsetv2(rx_samples, tx_SAMPLES=SAMPLES, num_samples=num_samples, leadingzeros=leadingzeros, add_td_samples=add_td_samples)
+
             if make_plot:
                 plot_noisesignalPSD(rx_samples, rx_samples_normalized, tx_SAMPLES=SAMPLES, \
                                     rx_TTI=rx_TTI, rx_noise=rx_noise, TTI_offset=TTI_offset, TTI_corr=TTI_corr, corr=corr, SINR=SINR)
+                plot_offsetdetection(tx_samples=SAMPLES, all_rx_samples=rx_samples_normalized, onetti_rx_samples=rx_TTI, rx_noise=rx_noise, TTI_offset=TTI_offset, TTI_correlation=TTI_corr, save=False, savefolder = 'output', save_path_prefix = "offset")
+
             if fails > timeout:
                 print("Too many errors, timeout")
                 sys.exit(1)
             # check if the correlation is reasonable to assume sync is right, if not increase power and/or rx sensitivity
-            if (corr >= corr_threshold):
-                success = 1
-            else: 
-                fails=+1
+            # if (corr >= corr_threshold):
+            #     success = 1
+            # else: 
+            #     fails=fails+1
+            success, needmorepower = check_corrcondition(corr, SINR, corr_threshold, minSINR=5, maxSINR=30)
+            if success != 1:
+                fails=fails+1
         
         SDR_TX_GAIN = self.sdr.tx_hardwaregain_chan0
         SDR_RX_GAIN = self.sdr.rx_hardwaregain_chan0
         self.SDR_TX_stop()
         try:
             out_shape[-1] += add_td_samples
-            out = np.reshape(rx_TTI, out_shape)
+            out = np.reshape(rx_TTI, out_shape) #(1892,)
         except Exception as e:
             print("Something failed:", e)
             sys.exit(1)
@@ -646,6 +672,29 @@ def test_SDRclass(urladdress, signal_type='dds'):
     #print(np.mean(rxtime))
     print(np.mean(processtime))
 
+from myadi.tddn import tddn
+def test_SDRTDD(urladdress="ip:pluto.local", signal_type='dds'):
+    fc=2.4*1e9 #2Ghz 2000000000
+    fs = 6000000 #6MHz
+    bandwidth = 4000000 #4MHz
+    mysdr = SDR(SDR_IP=urladdress, device='Pluto', SDR_FC=fc, SDR_SAMPLERATE=fs, SDR_BANDWIDTH=bandwidth, Rx_CHANNEL=1, Tx_CHANNEL=1)
+    mysdr.SDR_TX_stop()
+    #mysdr.SDR_TX_setup()
+    #mysdr.SDR_RX_setup(n_SAMPLES=10000)
+
+    # Configure TDD properties
+    tdd = tddn(urladdress)#"ip:pluto.local")
+    tdd.frame_length_ms = 4         # each GPIO toggle is spaced 4ms apart
+    tdd.startup_delay_ms = 0        # do not set a startup delay 
+    tdd.burst_count = 3             # there is a burst of 3 toggles, then off for a long time
+    tdd.out_channel0_on_ms = 0.5    # each GPIO pulse will be 100us (0.6ms - 0.5ms).  And the first trigger will happen 0.5ms into the buffer
+    tdd.out_channel0_off_ms = 0.6
+    tdd.out_channel0_enable = True  # Enable CH0 output
+    tdd.sync_external = True
+    tdd.enable = True
+    
+    time.sleep(0.3)  # Wait for settings to take effect
+
 
 def main():
     args = parser.parse_args()
@@ -658,6 +707,7 @@ def main():
     #sdr_test(urladdress, signal_type=signal_type, Rx_CHANNEL=Rx_CHANNEL, plot_flag = plot_flag)
 
     test_SDRclass(urladdress)
+    #test_SDRTDD(urladdress)
     fs=1000000
     #test_ofdm_SDR(urladdress=urladdress, SampleRate=fs)
     #test_ofdmmimo_SDR(urladdress=urladdress)
@@ -739,9 +789,10 @@ def updatefigure(axs, t, data0, data1, specf,specp):
 # localuri="ip:analog.local"
 # antsdruri="ip:192.168.1.10"#connected via Ethernet with static IP
 # plutodruri="ip:192.168.2.1" "ip:192.168.2.16"#connected via USB
+#PoE: "ip:192.168.1.67:50901"
 import argparse
 parser = argparse.ArgumentParser(description='MyAD9361')
-parser.add_argument('--urladdress', default="ip:192.168.1.67:50901", type=str,
+parser.add_argument('--urladdress', default="ip:192.168.2.1", type=str,
                     help='urladdress of the device, e.g., ip:pluto.local') 
 parser.add_argument('--rxch', default=1, type=int, 
                     help='number of rx channels')

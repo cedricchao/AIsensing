@@ -3551,10 +3551,10 @@ class MyOFDMEqualizer():
     def __call__(self, inputs):
 
         y, h_hat, err_var, no = inputs
-        # y has shape:
+        # y has shape: (2, 1, 16, 14, 76)
         # [batch_size, num_rx, num_rx_ant, num_ofdm_symbols, fft_size]
 
-        # h_hat has shape:
+        # h_hat has shape: (64, 1, 1, 1, 1, 14, 44), dtype=complex128
         # [batch_size, num_rx, num_rx_ant, num_tx, num_streams,...
         #  ..., num_ofdm_symbols, num_effective_subcarriers]
 
@@ -3566,7 +3566,7 @@ class MyOFDMEqualizer():
         # Remove nulled subcarriers from y (guards, dc). New shape:
         # [batch_size, num_rx, num_rx_ant, ...
         #  ..., num_ofdm_symbols, num_effective_subcarriers]
-        y_eff = self._removed_nulled_scs(y) #[64, 1, 1, 14, 64]
+        y_eff = self._removed_nulled_scs(y) #(2, 1, 16, 14, 76)=>(2, 1, 16, 14, 64)
 
         ####################################################
         ### Prepare the observation y for MIMO detection ###
@@ -3574,7 +3574,7 @@ class MyOFDMEqualizer():
         # Transpose y_eff to put num_rx_ant last. New shape:
         # [batch_size, num_rx, num_ofdm_symbols,...
         #  ..., num_effective_subcarriers, num_rx_ant]
-        y_dt = tf.transpose(y_eff, [0, 1, 3, 4, 2])
+        y_dt = tf.transpose(y_eff, [0, 1, 3, 4, 2]) #(2, 1, 14, 64, 16)
         y_dt = tf.cast(y_dt, self._dtype)
 
         ##############################################
@@ -3583,9 +3583,9 @@ class MyOFDMEqualizer():
         # New shape is:
         # [batch_size, num_rx, num_ofdm_symbols,...
         #  ..., num_effective_subcarriers, num_rx_ant, num_tx*num_streams]
-        err_var_dt = tf.broadcast_to(err_var, tf.shape(h_hat))
-        err_var_dt = tf.transpose(err_var_dt, [0, 1, 5, 6, 2, 3, 4])
-        err_var_dt = flatten_last_dims(err_var_dt, 2)
+        err_var_dt = tf.broadcast_to(err_var, tf.shape(h_hat)) #(2, 1, 16, 1, 2, 14, 64)
+        err_var_dt = tf.transpose(err_var_dt, [0, 1, 5, 6, 2, 3, 4]) #(2, 1, 14, 64, 16, 1, 2)
+        err_var_dt = flatten_last_dims(err_var_dt, 2) #(2, 1, 14, 64, 16, 2)
         err_var_dt = tf.cast(err_var_dt, self._dtype)
 
         ###############################
@@ -3596,18 +3596,18 @@ class MyOFDMEqualizer():
         # [num_rx, num_tx, num_streams_per_tx, batch_size, num_rx_ant, ,...
         #  ..., num_ofdm_symbols, num_effective_subcarriers]
         perm = [1, 3, 4, 0, 2, 5, 6]
-        h_dt = tf.transpose(h_hat, perm) #h: (64, 1, 1, 1, 16, 1, 64) =>[1, 1, 16, 64, 1, 1, 64]
+        h_dt = tf.transpose(h_hat, perm) #h: (2, 1, 16, 1, 2, 14, 64) =>(1, 1, 2, 2, 16, 14, 64)
 
         # Flatten first tthree dimensions:
         # [num_rx*num_tx*num_streams_per_tx, batch_size, num_rx_ant, ...
         #  ..., num_ofdm_symbols, num_effective_subcarriers]
-        h_dt = flatten_dims(h_dt, 3, 0) #(16, 64, 1, 1, 64)
+        h_dt = flatten_dims(h_dt, 3, 0) #(2, 2, 16, 14, 64)
 
         # Gather desired and undesired channels
-        ind_desired = self._stream_management.detection_desired_ind
-        ind_undesired = self._stream_management.detection_undesired_ind
-        h_dt_desired = tf.gather(h_dt, ind_desired, axis=0) #(1, 64, 1, 1, 64)
-        h_dt_undesired = tf.gather(h_dt, ind_undesired, axis=0) #(0, 64, 1, 1, 64)
+        ind_desired = self._stream_management.detection_desired_ind #[0, 1]
+        ind_undesired = self._stream_management.detection_undesired_ind #empty
+        h_dt_desired = tf.gather(h_dt, ind_desired, axis=0) #(2, 2, 16, 14, 64)
+        h_dt_undesired = tf.gather(h_dt, ind_undesired, axis=0) #(0, 2, 16, 14, 64)
 
         # Split first dimension to separate RX and TX:
         # [num_rx, num_streams_per_rx, batch_size, num_rx_ant, ...
@@ -3615,17 +3615,17 @@ class MyOFDMEqualizer():
         h_dt_desired = split_dim(h_dt_desired,
                                  [self._stream_management.num_rx,
                                   self._stream_management.num_streams_per_rx],
-                                 0) #(1, 1, 64, 1, 1, 64)
+                                 0) #(1, 2, 2, 16, 14, 64)
         h_dt_undesired = split_dim(h_dt_undesired,
-                                   [self._stream_management.num_rx, -1], 0) #(1, 0, 64, 1, 1, 64)
+                                   [self._stream_management.num_rx, -1], 0) #(1, 0, 2, 16, 14, 64)
 
         # Permutate dims to
         # [batch_size, num_rx, num_ofdm_symbols, num_effective_subcarriers,..
         #  ..., num_rx_ant, num_streams_per_rx(num_Interfering_streams_per_rx)]
         perm = [2, 0, 4, 5, 3, 1]
-        h_dt_desired = tf.transpose(h_dt_desired, perm) #(64, 1, 1, 64, 1, 1)
+        h_dt_desired = tf.transpose(h_dt_desired, perm) #(2, 1, 14, 64, 16, 2)
         h_dt_desired = tf.cast(h_dt_desired, self._dtype)
-        h_dt_undesired = tf.transpose(h_dt_undesired, perm) #(64, 1, 1, 64, 1, 0)
+        h_dt_undesired = tf.transpose(h_dt_undesired, perm) #(2, 1, 14, 64, 16, 0)
 
         ##################################
         ### Prepare the noise variance ###
@@ -3635,29 +3635,30 @@ class MyOFDMEqualizer():
         # then it is transposed like y to the final shape
         # [batch_size, num_rx, num_ofdm_symbols,...
         #  ..., num_effective_subcarriers, num_rx_ant]
-        no_dt = expand_to_rank(no, 3, -1)
-        no_dt = tf.broadcast_to(no_dt, tf.shape(y)[:3])
-        no_dt = expand_to_rank(no_dt, tf.rank(y), -1)
-        no_dt = tf.transpose(no_dt, [0,1,3,4,2])
+        no_dt = expand_to_rank(no, 3, -1) #(1, 1, 1)
+        no_dt = tf.broadcast_to(no_dt, tf.shape(y)[:3]) #(2, 1, 16)
+        no_dt = expand_to_rank(no_dt, tf.rank(y), -1) #(2, 1, 16, 1, 1)
+        no_dt = tf.transpose(no_dt, [0,1,3,4,2]) #(2, 1, 1, 1, 16)
         no_dt = tf.cast(no_dt, self._dtype) #(64, 1, 1, 1, 1) complex
 
         ##################################################
         ### Compute the interference covariance matrix ###
         ##################################################
         # Covariance of undesired transmitters
-        s_inf = tf.matmul(h_dt_undesired, h_dt_undesired, adjoint_b=True)
+        s_inf = tf.matmul(h_dt_undesired, h_dt_undesired, adjoint_b=True) #(2, 1, 14, 64, 16, 16)
 
         #Thermal noise
-        s_no = tf.linalg.diag(no_dt) #(64, 1, 1, 1, 1, 1)
+        s_no = tf.linalg.diag(no_dt) #(2, 1, 1, 1, 16, 16)
 
         # Channel estimation errors
         # As we have only error variance information for each element,
         # we simply sum them across transmitters and build a
-        # diagonal covariance matrix from this
-        s_csi = tf.linalg.diag(tf.reduce_sum(err_var_dt, -1))
+        # diagonal covariance matrix from this 
+        s_csi = tf.linalg.diag(tf.reduce_sum(err_var_dt, -1)) #(2, 1, 14, 64, 16, 16)
 
         # Final covariance matrix
-        s = s_inf + s_no + s_csi #(64, 1, 1, 64, 1, 1)
+        s_inf = tf.cast(s_inf, dtype=s_no.dtype) #new added to convert complex128 to complex64
+        s = s_inf + s_no + s_csi #(2, 1, 14, 64, 16, 16)
         s = tf.cast(s, self._dtype)
 
         ############################################################
@@ -3665,7 +3666,7 @@ class MyOFDMEqualizer():
         ############################################################
         # [batch_size, num_rx, num_ofdm_symbols, num_effective_subcarriers,...
         #  ..., num_stream_per_rx]
-        x_hat, no_eff = self._equalizer(y_dt, h_dt_desired, s) #x_hat: (64, 1, 14, 64, 1)
+        x_hat, no_eff = self._equalizer(y_dt, h_dt_desired, s) #x_hat: (2, 1, 14, 64, 2)
 
         ################################################
         ### Extract data symbols for all detected TX ###
@@ -3673,49 +3674,49 @@ class MyOFDMEqualizer():
         # Transpose tensor to shape
         # [num_rx, num_streams_per_rx, num_ofdm_symbols,...
         #  ..., num_effective_subcarriers, batch_size]
-        x_hat = tf.transpose(x_hat, [1, 4, 2, 3, 0])
-        no_eff = tf.transpose(no_eff, [1, 4, 2, 3, 0])
+        x_hat = tf.transpose(x_hat, [1, 4, 2, 3, 0]) #(1, 2, 14, 64, 2)
+        no_eff = tf.transpose(no_eff, [1, 4, 2, 3, 0]) #(1, 2, 14, 64, 2)
 
         # Merge num_rx amd num_streams_per_rx
         # [num_rx * num_streams_per_rx, num_ofdm_symbols,...
         #  ...,num_effective_subcarriers, batch_size]
-        x_hat = flatten_dims(x_hat, 2, 0)
-        no_eff = flatten_dims(no_eff, 2, 0)
+        x_hat = flatten_dims(x_hat, 2, 0) #(2, 14, 64, 2)
+        no_eff = flatten_dims(no_eff, 2, 0) #(2, 14, 64, 2)
 
         # Put first dimension into the right ordering
-        stream_ind = self._stream_management.stream_ind
-        x_hat = tf.gather(x_hat, stream_ind, axis=0)
-        no_eff = tf.gather(no_eff, stream_ind, axis=0)
+        stream_ind = self._stream_management.stream_ind #[0, 1]
+        x_hat = tf.gather(x_hat, stream_ind, axis=0) #(2, 14, 64, 2)
+        no_eff = tf.gather(no_eff, stream_ind, axis=0) #(2, 14, 64, 2)
 
         # Reshape first dimensions to [num_tx, num_streams] so that
         # we can compared to the way the streams were created.
         # [num_tx, num_streams, num_ofdm_symbols, num_effective_subcarriers,...
         #  ..., batch_size]
-        num_streams = self._stream_management.num_streams_per_tx
+        num_streams = self._stream_management.num_streams_per_tx #2
         num_tx = self._stream_management.num_tx
-        x_hat = split_dim(x_hat, [num_tx, num_streams], 0)
-        no_eff = split_dim(no_eff, [num_tx, num_streams], 0)
+        x_hat = split_dim(x_hat, [num_tx, num_streams], 0) #(1, 2, 14, 64, 2)
+        no_eff = split_dim(no_eff, [num_tx, num_streams], 0) #(1, 2, 14, 64, 2)
 
         # Flatten resource grid dimensions
         # [num_tx, num_streams, num_ofdm_symbols*num_effective_subcarriers,...
         #  ..., batch_size]
-        x_hat = flatten_dims(x_hat, 2, 2) #(1, 1, 896, 64)
-        no_eff = flatten_dims(no_eff, 2, 2) #(1, 1, 64, 64)
+        x_hat = flatten_dims(x_hat, 2, 2) #(1, 2, 896, 2)
+        no_eff = flatten_dims(no_eff, 2, 2) #(1, 2, 896, 2)
 
         # Broadcast no_eff to the shape of x_hat
-        no_eff = tf.broadcast_to(no_eff, tf.shape(x_hat)) #??[1,1,64,64] vs. [1,1,896,64]
+        no_eff = tf.broadcast_to(no_eff, tf.shape(x_hat)) #(1, 2, 896, 2)
 
         # Gather data symbols
         # [num_tx, num_streams, num_data_symbols, batch_size]
-        x_hat = tf.gather(x_hat, self._data_ind, batch_dims=2, axis=2)
-        no_eff = tf.gather(no_eff, self._data_ind, batch_dims=2, axis=2)
+        x_hat = tf.gather(x_hat, self._data_ind, batch_dims=2, axis=2) #(1, 2, 768, 2)
+        no_eff = tf.gather(no_eff, self._data_ind, batch_dims=2, axis=2) #(1, 2, 768, 2)
 
         # Put batch_dim first
         # [batch_size, num_tx, num_streams, num_data_symbols]
-        x_hat = tf.transpose(x_hat, [3, 0, 1, 2])
-        no_eff = tf.transpose(no_eff, [3, 0, 1, 2])
+        x_hat = tf.transpose(x_hat, [3, 0, 1, 2]) #(1, 2, 768, 2)
+        no_eff = tf.transpose(no_eff, [3, 0, 1, 2]) #(2, 1, 2, 768)
 
-        return (x_hat, no_eff)
+        return (x_hat, no_eff) #x_hat: (1, 2, 768, 2), no_eff: (2, 1, 2, 768)
     
 from channel import whiten_channel
 def lmmse_equalizer(y, h, s, whiten_interference=True):
@@ -4251,27 +4252,27 @@ class OFDMModulator(Layer):
         assert value >=0, "`cyclic_prefix_length` must be nonnegative."
         self._cyclic_prefix_length = value
 
-    def build(self, input_shape):
+    def build(self, input_shape): #inputshape: [2, 1, 2, 14, 76]
         # Verify that cyclic prefix is not longer than the FFT size.
         fft_size = input_shape[-1]
         assert self.cyclic_prefix_length<=fft_size, \
             "shape(inputs)[-1] must not be smaller than `cylic_prefix_length`"
 
-    def call(self, inputs):
+    def call(self, inputs): #inputshape: [2, 1, 2, 14, 76]
         # Shift DC subcarrier to first position
         inputs = ifftshift(inputs, axes=-1)
 
         # Compute IFFT along the last dimension
-        x = ifft(inputs)
+        x = ifft(inputs) #[2, 1, 2, 14, 76]
 
         # Obtain cyclic prefix
-        cp = x[...,tf.shape(inputs)[-1]-self._cyclic_prefix_length:]
+        cp = x[...,tf.shape(inputs)[-1]-self._cyclic_prefix_length:] #(2, 1, 2, 14, 6)
 
         # Prepend cyclic prefix
-        x = tf.concat([cp, x], -1) #[64, 1, 1, 14, 82]
+        x = tf.concat([cp, x], -1) #(2, 1, 2, 14, 6)
 
         # Serialize last two dimensions
-        x = flatten_last_dims(x, 2)
+        x = flatten_last_dims(x, 2) #(2, 1, 2, 1148)
 
         return x #[64, 1, 1, 1148]
 
@@ -4377,22 +4378,22 @@ class OFDMDemodulator(Layer):
         assert value >=0, "`cyclic_prefix_length` must be nonnegative."
         self._cyclic_prefix_length = int(value)
 
-    def build(self, input_shape): # pylint: disable=unused-argument
+    def build(self, input_shape): # pylint: disable=unused-argument, input_shape: [2, 1, 16, 1174]
         tmp = -2 * PI * tf.cast(self.l_min, tf.float32) \
               / tf.cast(self.fft_size, tf.float32) \
-              * tf.range(self.fft_size, dtype=tf.float32)
+              * tf.range(self.fft_size, dtype=tf.float32) #lmin=-6, fft_size=76
         self._phase_compensation = tf.exp(tf.complex(0., tmp))
 
         # Compute number of elements that will be truncated
         self._rest = np.mod(input_shape[-1],
-                                self.fft_size + self.cyclic_prefix_length)
+                                self.fft_size + self.cyclic_prefix_length) #26
 
         # Compute number of full OFDM symbols to be demodulated
         self._num_ofdm_symbols = np.floor_divide(
                                     input_shape[-1]-self._rest,
-                                    self.fft_size + self.cyclic_prefix_length)
+                                    self.fft_size + self.cyclic_prefix_length) #14
 
-    def call(self, inputs):
+    def call(self, inputs): #inputs: (2, 1, 16, 1174)
         """Demodulate OFDM waveform onto a resource grid.
 
         Args:
@@ -4405,15 +4406,15 @@ class OFDMDemodulator(Layer):
         """
 
         # Cut last samples that do not fit into an OFDM symbol
-        inputs = inputs if self._rest==0 else inputs[...,:-self._rest]
+        inputs = inputs if self._rest==0 else inputs[...,:-self._rest] #(2, 1, 16, 1148)
 
         # Reshape input to separate OFDM symbols
         new_shape = tf.concat([tf.shape(inputs)[:-1], [self._num_ofdm_symbols],
-                               [self.fft_size + self.cyclic_prefix_length]], 0)
+                               [self.fft_size + self.cyclic_prefix_length]], 0) #[ 2,  1, 16, 14, 82]
         x = tf.reshape(inputs, new_shape)
 
         # Remove cyclic prefix
-        x = x[...,self.cyclic_prefix_length:]
+        x = x[...,self.cyclic_prefix_length:] #(2, 1, 16, 14, 76) remove cyclic_prefix_length=6
 
         # Compute FFT
         x = fft(x)

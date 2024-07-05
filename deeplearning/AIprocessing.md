@@ -49,11 +49,89 @@ Our new AI processing framework aims to overcome these limitations. It offers th
    - Our open environment encourages Computer Science and Software Engineering students to innovate. Students can develop software and deep learning models using a specified general-purpose dataset format, without requiring deep domain-specific knowledge in wireless communication. 
    - Our AI processing framework bridges the gap between theory and practice, empowering researchers and students alike. As we refine our implementation, we anticipate further breakthroughs in wireless communication and radar sensing. By fostering collaboration and creativity, we build upon the solid foundation we've established.
 
+## Setup Python Environment
+
+```bash
+   curl https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o Miniconda3-latest-Linux-x86_64.sh
+   bash Miniconda3-latest-Linux-x86_64.sh
+```
+
+You can also install conda in silent mode, but you need to run additional commands to initialize PATH and perform init
+
+```bash
+   $ python3 -V #system's python3 version
+   Python 3.10.12
+   $ bash Miniconda3-latest-Linux-x86_64.sh -b -u
+   $ source ~/miniconda3/bin/activate
+   $ conda init bash
+```
+".bashrc" has been updated, and close and re-open your current shell to make changes effective.
+
+Create a Conda virtual environment with python 3.10 (`tensorrt==8.5.3.1` does not support python3.11):
+
+```bash
+   $ conda info --envs #check existing conda environment
+   $ conda create --name py310cu118 python=3.10
+   $ conda activate py310cu118
+   $ conda info
+   $ conda deactivate #To deactivate an active environment
+```
+
+Install cuda, cudnn, tensorflow, and pytorch (Windows Native - Windows 7 or higher (64-bit) (no GPU support after TF 2.10))
+```bash
+   #install cuda under Conda
+   conda install -y cuda -c nvidia/label/cuda-11.8.0 #new method from https://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html#conda-installation
+   # Install pytorch
+   conda install -y pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
+   # install cuDNN and Tensorflow
+   #python3 -m pip install nvidia-cudnn-cu11==8.6.0.163 tensorflow==2.12.0
+   #pip install nvidia-cudnn-cu11==8.7.0.84
+   #pip install tensorflow[and-cuda]==2.14.0
+   (py310cu118) PS D:\Developer\radarsensing> pip install tensorflow==2.14.0
+   (py310cu118) PS D:\Developer\radarsensing> pip install nvidia-cudnn-cu11
+   Successfully installed nvidia-cublas-cu11-11.11.3.6 nvidia-cuda-nvrtc-cu11-11.8.89 nvidia-cudnn-cu11-9.1.1.17
+   python -c "import tensorflow as tf; print('tf version:', tf.__version__); print(tf.config.list_physical_devices('GPU'))"
+   # Verify Pytorch installation
+   python -c "import torch; print('Torch version:', torch.__version__); print(torch.cuda.is_available())"
+```
+
+Install other python packages:
+```bash
+   conda install -y -c conda-forge jupyterlab
+   conda install -y ipykernel
+   jupyter kernelspec list #view current jupyter kernels
+   ipython kernel install --user --name=py310cu118
+   conda install -y numpy matplotlib pandas Pillow scipy pyyaml scikit-image 
+   pip install pyqt5 pyqt6 PySide6 pyqtgraph opencv-python-headless PyOpenGL PyOpenGL_accelerate pyopengl
+   pip install sionna DeepMIMO pyadi-iio
+```
+
+Installation in Mac
+```bash
+(mypy310) (base) kaikailiu@Kaikais-MBP radarsensing % pip install tensorflow==2.14.0
+#Test tensorflow
+python3 -c "import tensorflow as tf; print(tf.reduce_sum(tf.random.normal([1000, 1000])))"
+pip install sionna
+```
+
+## Test NVIDIA Sionna
+
+Install Nvidia sionna from [SionnaGithub](https://github.com/NVlabs/sionna/tree/main):
+```bash
+$ pip install sionna
+(mycondapy310) (base) lkk@lkk-intel12:~/Developer$ git clone https://github.com/NVlabs/sionna.git
+```
+
 ## DeepMIMO
 [DeepMIMO](https://deepmimo.net/) is a generic dataset that enables a wide range of machine/deep learning applications for MIMO systems. It takes as input a set of parameters (such as antenna array configurations and time-domain/OFDM parameters) and generates MIMO channel realizations, corresponding locations, angles of arrival/departure, etc., based on these parameters and on a ray-tracing scenario selected from those available in DeepMIMO.
 
 DeepMIMO provides multiple scenarios that one can select from. We use the O1 scenario with the carrier frequency set to 60 GHz (O1_60). We need to download the "O1_60" data files from this [page](https://deepmimo.net/scenarios/o1-scenario/). The downloaded zip file should be extracted into a folder, and the parameter DeepMIMO_params['dataset_folder'] should be set to point to this folder. To use DeepMIMO, the DeepMIMO dataset first needs to be generated. The generated DeepMIMO dataset contains channels for different locations of the users and basestations. The layout of the O1 scenario is shown in the figure below.
 ![DeepMIMO O1](../imgs/deepmimo_o1.png)
+
+Install DeepMIMO python package
+```bash
+pip install DeepMIMO
+```
 
 In our `deepMIMO5.py` file, we need to setup the `dataset_folder='data'` in the main file, or setup `dataset_folder=r'D:\Dataset\CommunicationDataset\O1_60'` in Windows side. It will use the following function to get the DeepMIMO dataset:
 ```bash
@@ -175,6 +253,21 @@ h = (np.random.normal(size=h_shape) + 1j*np.random.normal(size=h_shape))/np.sqrt
 # Random path delays
 tau = np.random.uniform(size=[dataset_size, num_rx, num_tx, num_paths])
 ```
+
+The instance `cdl` of the [CDL](https://nvlabs.github.io/sionna/api/channel.html#clustered-delay-line-cdl) [ChannelModel](https://nvlabs.github.io/sionna/api/channel.html#channel-model-interface) can be used to generate batches of random realizations of continuous-time
+channel impulse responses, consisting of complex gains `a` and delays `tau` for each path. 
+To account for time-varying channels, a channel impulse responses is sampled at the `sampling_frequency` for `num_time_samples` samples.
+For more details on this, please have a look at the [API documentation](https://nvlabs.github.io/sionna/api/channel.html) of the channel models. In order to model the channel in the frequency domain, we need `num_ofdm_symbols` samples that are taken once per `ofdm_symbol_duration`, which corresponds to the length of an OFDM symbol plus the cyclic prefix.
+
+```bash
+a, tau = cdl(batch_size=32, num_time_steps=rg.num_ofdm_symbols, sampling_frequency=1/rg.ofdm_symbol_duration)
+```
+
+The path gains `a` have shape\
+`[batch size, num_rx, num_rx_ant, num_tx, num_tx_ant, num_paths, num_time_steps]`\
+and the delays `tau` have shape\
+`[batch_size, num_rx, num_tx, num_paths]`.
+
 If using CIR dataset, the `channel_model` will also generate $h$ and $tau$:
 ```bash
 batch_size = 64 # The batch_size cannot be changed after the creation of the channel model
@@ -192,7 +285,7 @@ It can also be generated by CDL channel model:
 ```bash
 a, tau = cdl(batch_size=32, num_time_steps=rg.num_ofdm_symbols, sampling_frequency=1/rg.ofdm_symbol_duration)
 ```
-The path gains a have shape `[batch size, num_rx, num_rx_ant, num_tx, num_tx_ant, num_paths, num_time_steps]` and the delays tau have shape `[batch_size, num_rx, num_tx, num_paths]`. The delays are assumed to be static within the time-window of interest. Only the complex path gains change over time. 
+The path gains a have shape `[batch size, num_rx, num_rx_ant, num_tx, num_tx_ant, num_paths, num_time_steps]` and the delays tau have shape `[batch_size, num_rx, num_tx, num_paths]`. The delays are assumed to be static within the time-window of interest. Only the complex path gains change over time. The last dimenstion `num_time_steps` means Time evolution of path gain.
 
 ### channel frequency responses (frequency-domain)
 If we want to use the continuous-time channel impulse response to simulate OFDM transmissions under ideal conditions, i.e., no inter-symbol interference, inter-carrier interference, etc., we need to convert it to the frequency domain. For the simulation of communication system based on OFDM, we can use the channel model to generate channel frequency responses $h_{freq}$. 
@@ -202,7 +295,7 @@ ofdm_channel = channel.GenerateOFDMChannel(channel_model, resource_grid)
 # Shape: [batch size, num_rx, num_rx_ant, num_tx, num_tx_ant, num_ofdm_symbols, num_subcarriers]
 h_freq = ofdm_channel()
 ```
-The format of `h_freq` is `[batch size, num_rx, num_rx_ant, num_tx, num_tx_ant, num_ofdm_symbols, num_subcarriers]`, where `num_ofdm_symbols` refers to the number of individual OFDM symbols within a transmission burst. Each OFDM symbol contains multiple subcarriers (frequency bins). These symbols are grouped together to form a burst of data.
+The format of `h_freq` is `[batch size, num_rx, num_rx_ant, num_tx, num_tx_ant, num_ofdm_symbols, num_subcarriers]`, where `num_ofdm_symbols` refers to the number of individual OFDM symbols within a transmission burst, e.g., `num_ofdm_symbols=14`, `num_subcarriers=76`. Each OFDM symbol contains multiple subcarriers (frequency bins). These symbols are grouped together to form a burst of data. 
 
 This can also be done with the function `cir_to_ofdm_channel` that computes the Fourier transform of the continuous-time channel impulse response at a set of frequencies, corresponding to the different subcarriers. The frequencies can be obtained with the help of the convenience function subcarrier_frequencies.
 ```bash
@@ -235,20 +328,69 @@ The figure of the channel frequency response is shown here:
 ### discrete-time impulse response (time-domain)
 In the same way as we have created the frequency channel impulse response from the continuous-time response, we can use the latter to compute a discrete-time impulse response. This can then be used to model the channel in the time-domain through discrete convolution with an input signal. Time-domain channel modeling is necessary whenever we want to deviate from the perfect OFDM scenario, e.g., OFDM without cyclic prefix, inter-subcarrier interference due to carrier-frequency offsets, phase noise, or very high Doppler spread scenarios, as well as other single or multicarrier waveforms (OTFS, FBMC, UFMC, etc).
 
-A discrete-time impulse response can be obtained with the help of the function cir_to_time_channel that requires a bandwidth parameter. This function first applies a perfect low-pass filter of the provided bandwith to the continuous-time channel impulse response and then samples the filtered response at the Nyquist rate. The resulting discrete-time impulse response is then truncated to finite length, depending on the delay spread. l_min and l_max denote truncation boundaries and the resulting channel has l_tot=l_max-l_min+1 filter taps. A detailed mathematical description of this process is provided in the API documentation of the channel models. You can freely chose both parameters if you do not want to rely on the default values.
+A discrete-time impulse response can be obtained with the help of the function cir_to_time_channel that requires a `bandwidth` parameter. This function first applies a perfect low-pass filter of the provided bandwith to the continuous-time channel impulse response and then samples the filtered response at the Nyquist rate. The resulting discrete-time impulse response is then truncated to finite length, depending on the delay spread. l_min and l_max denote truncation boundaries and the resulting channel has l_tot=l_max-l_min+1 filter taps. A detailed mathematical description of this process is provided in the API documentation of the channel models. You can freely chose both parameters if you do not want to rely on the default values.
 
-In order to model the channel in the domain, the continuous-time channel impulse response must be sampled at the Nyquist rate. We also need now num_ofdm_symbols x (fft_size + cyclic_prefix_length) + l_tot-1 samples in contrast to num_ofdm_symbols samples for modeling in the frequency domain. This implies that the memory requirements of time-domain channel modeling is significantly higher. We therefore recommend to only use this feature if it is really necessary. Simulations with many transmitters, receivers, and/or large antenna arrays become otherwise quickly prohibitively complex.
+In order to model the channel in the domain, the continuous-time channel impulse response must be sampled at the Nyquist rate. We also need now `num_ofdm_symbols x (fft_size + cyclic_prefix_length) + l_tot-1` samples in contrast to `num_ofdm_symbols` samples for modeling in the frequency domain. This implies that the memory requirements of time-domain channel modeling is significantly higher. We therefore recommend to only use this feature if it is really necessary. Simulations with many transmitters, receivers, and/or large antenna arrays become otherwise quickly prohibitively complex.
 ```bash
 l_min, l_max = time_lag_discrete_time_channel(rg.bandwidth)
 l_tot = l_max-l_min+1
 
 a, tau = cdl(batch_size=2, num_time_steps=rg.num_time_samples+l_tot-1, sampling_frequency=rg.bandwidth)
+```
+`rg.num_time_samples=1148=14x(76+6)`. For example, a is `[2, 1, 16, 1, 2, 23, 1164]`, where `1164` is from `14x(76+6)+17-1=1164`, where `rg.cyclic_prefix_length=6`.
+
+```bash
 h_time = cir_to_time_channel(rg.bandwidth, a, tau, l_min=l_min, l_max=l_max, normalize=True)
 # Function that will apply the discrete-time channel impulse response to an input signal
 channel_time = ApplyTimeChannel(rg.num_time_samples, l_tot=l_tot, add_awgn=True)
 ```
+where `h_time` is Discrete-time channel impulse response `[batch size, num_rx, num_rx_ant, num_tx, num_tx_ant, num_time_steps, l_max - l_min + 1]`, e.g., the shape is `[2, 1, 16, 1, 2, 1164, 17]`
 
-In the member function `def generateChannel(self, x_rg, no, channeltype='ofdm'):` of `class Transmitter` in `deepMIMO5.py`, it contains the `cir_to_time_channel` function and generate the discrete-time channel impulse reponse
+During time-domain OFDM transmission: 
+```bash
+b = binary_source([batch_size, 1, rg.num_streams_per_tx, encoder.k])
+c = encoder(b)
+x = mapper(c)
+x_rg = rg_mapper(x)
+x_rg shape: (4, 1, 2, 14, 76)
+
+# OFDM modulation with cyclic prefix insertion
+x_time = modulator(x_rg)
+x_time shape: (4, 1, 2, 1148)
+
+# Compute the discrete-time channel impulse reponse
+cir = cdl(batch_size, rg.num_time_samples+l_tot-1, rg.bandwidth)
+h_time = cir_to_time_channel(rg.bandwidth, *cir, l_min, l_max, normalize=True)
+h_time shape: `[batch size, num_rx, num_rx_ant, num_tx, num_tx_ant, num_time_steps, l_max - l_min + 1]` (4, 1, 16, 1, 2, 1164, 17)
+
+#channel output
+y_time = channel_time([x_time, h_time, no])
+y_time shape: (4, 1, 16, 1164)
+
+# OFDM demodulation and cyclic prefix removal
+y = demodulator(y_time)
+y shape: (4, 1, 16, 14, 76)
+
+#perfect_csi
+a shape: `[batch size, num_rx, num_rx_ant, num_tx, num_tx_ant, num_paths, num_time_steps]` (4, 1, 16, 1, 2, 23, 1164)
+tau shape: `[batch size, num_rx, num_tx, num_paths]` (4, 1, 1, 23)
+# We need to sub-sample the channel impulse reponse to compute perfect CSI
+# for the receiver as it only needs one channel realization per OFDM symbol
+a_freq = a[...,rg.cyclic_prefix_length:-1:(rg.fft_size+rg.cyclic_prefix_length)] #6:-1:76+6, where rg.fft_size=76
+a_freq = a_freq[...,:rg.num_ofdm_symbols]
+
+a_freq shape: (4, 1, 16, 1, 2, 23, 14)
+h_freq shape: (4, 1, 16, 1, 2, 14, 76)
+h_hat shape: (4, 1, 16, 1, 2, 14, 64)
+x_hat shape: (4, 1, 2, 768)
+no_eff shape: (4, 1, 2, 768)
+llr shape: (4, 1, 2, 1536)
+b_hat shape: (4, 1, 2, 768)
+BER: 0.0
+```
+
+### discrete-time impulse response (time-domain) in our code `deepMIMO5.py`
+???? In the member function `def generateChannel(self, x_rg, no, channeltype='ofdm'):` of `class Transmitter` in `deepMIMO5.py`, it contains the `cir_to_time_channel` function and generate the discrete-time channel impulse reponse
 ```bash
 h_time = cir_to_time_channel(bandwidth, h_b, tau_b, l_min=l_min, l_max=l_max, normalize=True) 
 #h_time: [batch size, num_rx, num_rx_ant, num_tx, num_tx_ant, num_time_steps, l_max - l_min + 1] complex[64, 1, 1, 1, 16, 1, 27]

@@ -227,6 +227,20 @@ $ ssh root@192.168.2.1
 $ python sdradi/pysdr.py
 ```
 
+### Mac OS Installation
+It is recommended that Mac OS users build libiio from the [build instructions](https://github.com/analogdevicesinc/libiio/blob/master/README_BUILD.md)
+```bash
+(mypy310) (base) kaikailiu@Kaikais-MBP radarsensing % pip install pylibiio
+(mypy310) (base) kaikailiu@Kaikais-MBP radarsensing % pip install pyadi-iio
+(mypy310) (base) kaikailiu@Kaikais-MBP radarsensing % iio_info -s
+Library version: 0.24 (git tag: v0.24)
+Compiled with backends: xml ip usb
+Unable to create Local IIO context : Function not implemented (78)
+Available contexts:
+        0: 0456:b673 (Analog Devices Inc. PlutoSDR (ADALM-PLUTO)), serial=10447376de0b000f00003000f0ba975eb8 [usb:1.7.5]
+```
+
+
 ## SSH Access to **POE** Device with Phaser and SDR
 The Radar is shown in this figure:
 ![Radar Device](../imgs/radardevice.png)
@@ -380,7 +394,15 @@ python sdradi/myad9361class.py
 ```
 This code contains two test cases: 1) `test_SDRclass`, which performs continuous data transmission and receive; and 2) `test_ofdm_SDR`, which performs correction for the received sample and detect the starting point. 
 
-Integrate the `myofdm.py` with `myad9361class.py` to transmit the simple OFDM signal. The `test_ofdm_SDR` mainly tests the `SDR_RXTX_offset` function. The result figure for Pulto SDR is shown as:
+Integrate the `myofdm.py` with `myad9361class.py` to transmit the simple OFDM signal. The `test_ofdm_SDR` mainly tests the `SDR_RXTX_offset` function. The output format is `[IQ, SINR, SDR_TX_GAIN, SDR_RX_GAIN, fails + 1, corr, sdr_time]` where
+  * IQ is the IQ data in format expected by demodulator
+  * SINR is the measured SINR based on noise power measurement during the unmodulated symbols, and the mean power of the received and synchronised signal.
+  * SDR_RX_GAIN similar to above, the actual RX setting
+  * fails+1 is the number of repeated processes if correlation check fails. If this happens, TX power is increased each time.
+  * corr os the Pearson correlation of the tx and rx signals
+  * sdr_time is the measured time from start of the SDR process to finishing it. When debug is enabled, it takes about 1.4sec and without it takes 25ms in authors computer.
+
+The result figure (plotted by `plot_noisesignalPSD` in `processing.py`) for Pulto SDR is shown as:
 
 ![correctionresults](../imgs/correctionresults.png "Receiver Correction results")
 

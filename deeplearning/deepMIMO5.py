@@ -372,6 +372,7 @@ def plotcomplex(y):
 # and (4 and 5) to the UEs.
 #
 class DeepMIMODataset(Dataset):
+    #ref: https://github.com/DeepMIMO/DeepMIMO-python/blob/master/src/DeepMIMOv3/sionna_adapter.py
     def __init__(self, DeepMIMO_dataset, bs_idx = None, ue_idx = None):
         self.dataset = DeepMIMO_dataset  
         # Set bs_idx based on given parameters
@@ -554,6 +555,8 @@ def get_deepMIMOdata(scenario='O1_60', dataset_folder=r'D:\Dataset\Communication
     #Basestation Location [x, y, z].
     print(DeepMIMO_dataset[active_bs_idx]['user']['location'][j])
     #The Euclidian location of the user in the form of [x, y, z].
+
+    #https://github.com/DeepMIMO/DeepMIMO-python/blob/master/src/DeepMIMOv3/sionna_adapter.py
 
     if showfig:
         plt.figure(figsize=(12,8))
@@ -1571,9 +1574,9 @@ def subcarrier_frequencies(num_subcarriers, subcarrier_spacing,
     #num_subcarrier is even
     #use numpy to check num_subcarriers is an even number or not
     #if np.equal(np.floor(num_subcarriers/2), 0):
-    if num_subcarriers%2 == 0:
-        start=-num_subcarriers/2
-        limit=num_subcarriers/2
+    if num_subcarriers%2 == 0: #76%2
+        start=-num_subcarriers/2 #-38
+        limit=num_subcarriers/2 #38
     else:
         start=-(num_subcarriers-1)/2
         limit=(num_subcarriers-1)/2+1
@@ -2960,24 +2963,24 @@ class OFDMModulator(): #Computes the frequency-domain representation of an OFDM 
         #self.l_min = l_min #int "l_min must be nonpositive."
         self.cyclic_prefix_length = cyclic_prefix_length #"`cyclic_prefix_length` must be nonnegative."
 
-    def __call__(self, inputs):
+    def __call__(self, inputs): #shape(2, 1, 2, 14, 76)
         # Shift DC subcarrier to first position
-        inputs = np.fft.ifftshift(inputs, axes=-1) #(64, 1, 1, 14, 76)
+        inputs = np.fft.ifftshift(inputs, axes=-1) #(2, 1, 2, 14, 76)
 
         # Compute IFFT along the last dimension
-        x = np.fft.ifft(inputs, axis=-1) #(64, 1, 1, 14, 76)
+        x = np.fft.ifft(inputs, axis=-1) #(2, 1, 2, 14, 76)
 
         # Obtain cyclic prefix
         last_dimension = np.shape(inputs)[-1] #76
-        cp = x[..., last_dimension-self.cyclic_prefix_length:] #(64, 1, 1, 14, 0)
+        cp = x[..., last_dimension-self.cyclic_prefix_length:] #(2, 1, 2, 14, 6)
 
         # Prepend cyclic prefix
-        x = np.concatenate([cp, x], axis=-1) #(64, 1, 1, 14, 76)
+        x = np.concatenate([cp, x], axis=-1) #(2, 1, 2, 14, 82)
 
         # Serialize last two dimensions
         x = x.reshape(x.shape[:-2] + (-1,))
 
-        return x #(64, 1, 1, 1064)
+        return x #(2, 1, 2, 1148)
 
 class OFDMDemodulator():
     r"""
@@ -3077,7 +3080,7 @@ class OFDMDemodulator():
         self._rest = np.mod(input_shape[-1], fft_size + cyclic_prefix_length) #1090/(76+0)=26
         self.num_ofdm_symbols = np.floor_divide(input_shape[-1] - self._rest, fft_size + cyclic_prefix_length) #14
     
-    def __call__(self, inputs, phase_compensation=False): #(64, 1, 1, 1090)
+    def __call__(self, inputs, phase_compensation=True): #(64, 1, 1, 1090)
         """Demodulate OFDM waveform onto a resource grid.
 
         Args:
@@ -3088,35 +3091,35 @@ class OFDMDemodulator():
             `complex64` : The demodulated inputs of shape
             `[...,num_ofdm_symbols, fft_size]`.
         """
-        input_shape = inputs.shape #(64, 1, 1, 1090)
+        input_shape = inputs.shape #[2, 1, 16, 1174]
         self.calculate_num_ofdm_symbols(input_shape=input_shape)
 
         # Cut last samples that do not fit into an OFDM symbol
-        inputs = inputs if self._rest==0 else inputs[...,:-self._rest] #(64, 1, 1, 1064)
+        inputs = inputs if self._rest==0 else inputs[...,:-self._rest] #(2, 1, 16, 1148)
 
         # Reshape input to separate OFDM symbols
         new_shape = np.concatenate([np.shape(inputs)[:-1], [self.num_ofdm_symbols],
-                            [self.fft_size + self.cyclic_prefix_length]], axis=0) #[64,  1,  1, 14, 76]
+                            [self.fft_size + self.cyclic_prefix_length]], axis=0) #[ 2,  1, 16, 14, 82]
         x = np.reshape(inputs, new_shape) #(64, 1, 1, 14, 76)
 
         # Remove cyclic prefix, cyclic_prefix_length=0
-        x = x[...,self.cyclic_prefix_length:] #(64, 1, 1, 14, 76)
+        x = x[...,self.cyclic_prefix_length:] #(2, 1, 16, 14, 76)
 
         # Compute FFT
-        x = np.fft.fft(x)
+        x = np.fft.fft(x) #(2, 1, 16, 14, 76)
 
         if phase_compensation:
             # Apply phase shift compensation to all subcarriers
             #rot = np.cast[self.phase_compensation, x.dtype]
             rot = self.phase_compensation.astype(x.dtype) #(76,)
             #rot = np.expand_dims(rot, axis=0)
-            rot = myexpand_to_rank(rot, x.ndim, axis=0)  #(1, 1, 1, 1, 76) rot = expand_to_rank(rot, tf.rank(x), 0)
-            x = x * rot #(64, 1, 1, 14, 76)
+            rot = myexpand_to_rank(rot, x.ndim, axis=0)  #(1, 1, 1, 1, 76) rot = expand_to_rank(rot, tf.rank(x), 0) 
+            x = x * rot #(2, 1, 16, 14, 76)
 
         # Shift DC subcarrier to the middle
         x = np.fft.fftshift(x, axes=-1)
 
-        return x #(64, 1, 1, 14, 76)
+        return x #(2, 1, 16, 14, 76)
 
 def ofdm_modulator(resource_grid, fft_size, cyclic_prefix_length):
     # Add cyclic prefix
@@ -3590,7 +3593,7 @@ class Transmitter():
                 plt.xlabel(r"Time step $\ell$")
                 plt.ylabel(r"$|\bar{h}|$");
             #channel_time = ApplyTimeChannel(self.RESOURCE_GRID.num_time_samples, l_tot=l_tot, add_awgn=False)
-            channel_time = MyApplyTimeChannel(self.RESOURCE_GRID.num_time_samples, l_tot=l_tot, add_awgn=False)
+            channel_time = MyApplyTimeChannel(self.RESOURCE_GRID.num_time_samples, l_tot=l_tot, add_awgn=True)
             # OFDM modulator and demodulator
             modulator = OFDMModulator(self.RESOURCE_GRID.cyclic_prefix_length)
             demodulator = OFDMDemodulator(self.RESOURCE_GRID.fft_size, l_min, self.RESOURCE_GRID.cyclic_prefix_length)
@@ -3605,9 +3608,10 @@ class Transmitter():
             # insufficiently long cyclic prefix will become visible. This
             # is in contrast to frequency-domain modeling which imposes
             # no inter-symbol interfernce.
-            #y_time = channel_time([x_time, h_time, no]) #[64, 1, 1, 1174]
-            y_time = channel_time([x_time, h_time]) #(64, 1, 1, 1090) complex
+            y_time = channel_time([x_time, h_time, no]) #[64, 1, 1, 1174]
+            #y_time = channel_time([x_time, h_time]) #(64, 1, 1, 1090) complex
 
+            #Do modulator and demodulator test
             y_test = demodulator(x_time)
             differences = np.abs(x_rg - y_test)
             threshold=1e-7
@@ -3615,9 +3619,10 @@ class Transmitter():
             print("Number of differences:", num_differences)
             print(np.allclose(x_rg, y_test))
             print("Demodulation error (L2 norm):", np.linalg.norm(x_rg - y_test))
+            
             # OFDM demodulation and cyclic prefix removal
             y = demodulator(y_time)
-            y = y_test
+            #y = y_test
             #y: [64, 1, 1, 14, 76]
         return y, h_out
     
@@ -3630,7 +3635,7 @@ class Transmitter():
             h_b=h_b.numpy()
         return h_b, tau_b
 
-    def __call__(self, b=None, ebno_db = 15.0, channeltype='ofdm', perfect_csi=True):
+    def __call__(self, b=None, ebno_db = 15.0, channeltype='ofdm', perfect_csi=False):
         # Transmitter
         if b is None:
             binary_source = BinarySource()
@@ -3681,14 +3686,27 @@ class Transmitter():
             else: #perform channel estimation via pilots
                 print("Num of Pilots:", len(self.RESOURCE_GRID.pilot_pattern.pilots)) #1
                 # Receiver
-                #ls_est = LSChannelEstimator(self.RESOURCE_GRID, interpolation_type="lin_time_avg")
-                ls_est = MyLSChannelEstimator(self.RESOURCE_GRID, interpolation_type="lin_time_avg")
+                ls_est = LSChannelEstimator(self.RESOURCE_GRID, interpolation_type="lin_time_avg")
+                #ls_est = MyLSChannelEstimator(self.RESOURCE_GRID, interpolation_type="lin_time_avg")
 
                 #Observed resource grid y : [batch_size, num_rx, num_rx_ant, num_ofdm_symbols,fft_size], (64, 1, 1, 14, 76) complex
                 #no : [batch_size, num_rx, num_rx_ant] 
                 h_hat, err_var = ls_est([y, no]) #tf tensor (64, 1, 1, 1, 1, 14, 64), (1, 1, 1, 1, 1, 14, 64)
                 #h_ls : [batch_size, num_rx, num_rx_ant, num_tx, num_streams_per_tx, num_ofdm_symbols,fft_size], tf.complex
                 #Channel estimates accross the entire resource grid for all transmitters and streams
+
+            if self.showfig:
+                h_perfect = h_out[0,0,0,0,0,0] #(64, 1, 1, 1, 16, 1, 44)
+                h_est = h_hat[0,0,0,0,0,0] #(64, 1, 1, 1, 1, 14, 44)
+                plt.figure()
+                plt.plot(np.real(h_perfect))
+                plt.plot(np.imag(h_perfect))
+                plt.plot(np.real(h_est), "--")
+                plt.plot(np.imag(h_est), "--")
+                plt.xlabel("Subcarrier index")
+                plt.ylabel("Channel frequency response")
+                plt.legend(["Ideal (real part)", "Ideal (imaginary part)", "Estimated (real part)", "Estimated (imaginary part)"]);
+                plt.title("Comparison of channel frequency responses");
 
             #lmmse_equ = LMMSEEqualizer(self.RESOURCE_GRID, self.STREAM_MANAGEMENT)
             lmmse_equ = MyLMMSEEqualizer(self.RESOURCE_GRID, self.STREAM_MANAGEMENT)
@@ -3720,14 +3738,16 @@ if __name__ == '__main__':
 
     #testOFDMModulatorDemodulator()
     scenario='O1_60'
-    dataset_folder='data' #r'D:\Dataset\CommunicationDataset\O1_60'
+    #dataset_folder='data' #r'D:\Dataset\CommunicationDataset\O1_60'
+    dataset_folder='data/DeepMIMO'
     #dataset_folder=r'D:\Dataset\CommunicationDataset\O1_60'
     ofdmtest = True
+    showfigure = True
     if ofdmtest is not True:
         transmit = Transmitter(scenario, dataset_folder, num_rx = 1, num_tx = 1, \
                     batch_size =64, fft_size = 76, num_ofdm_symbols=14, num_bits_per_symbol = 4,  \
                     subcarrier_spacing=60e3, \
-                    USE_LDPC = False, pilot_pattern = "empty", guards=False, showfig=True) #"kronecker"
+                    USE_LDPC = False, pilot_pattern = "empty", guards=False, showfig=showfigure) #"kronecker"
         #channeltype="perfect", "awgn", "ofdm", "time"
         b_hat, BER = transmit(ebno_db = 15.0, channeltype='awgn')
         b_hat, BER = transmit(ebno_db = 15.0, channeltype='time')
@@ -3735,10 +3755,11 @@ if __name__ == '__main__':
         transmit = Transmitter(scenario, dataset_folder, num_rx = 1, num_tx = 1, \
                     batch_size =64, fft_size = 76, num_ofdm_symbols=14, num_bits_per_symbol = 4,  \
                     subcarrier_spacing=60e3, \
-                    USE_LDPC = False, pilot_pattern = "kronecker", guards=True, showfig=True) #"kronecker" "empty"
+                    USE_LDPC = False, pilot_pattern = "kronecker", guards=True, showfig=showfigure) #"kronecker" "empty"
         #channeltype="perfect", "awgn", "ofdm", "time"
-        b_hat, BER = transmit(ebno_db = 15.0, channeltype='ofdm', perfect_csi=False)
-        b_hat, BER = transmit(ebno_db = 15.0, channeltype='ofdm', perfect_csi=True)
+        b_hat, BER = transmit(ebno_db = 5.0, channeltype='ofdm', perfect_csi=False)
+        #b_hat, BER = transmit(ebno_db = 15.0, channeltype='ofdm', perfect_csi=True)#has error due to shape difference
+        b_hat, BER = transmit(ebno_db = 5.0, channeltype='time', perfect_csi=False)
     print("Finished")
 
     
