@@ -77,7 +77,7 @@ Create a Conda virtual environment with python 3.10 (`tensorrt==8.5.3.1` does no
    $ conda deactivate #To deactivate an active environment
 ```
 
-Install cuda, cudnn, tensorflow, and pytorch (Windows Native - Windows 7 or higher (64-bit) (no GPU support after TF 2.10))
+Windows Side: Install cuda, cudnn, tensorflow, and pytorch (Windows Native - Windows 7 or higher (64-bit) (no GPU support after TF 2.10))
 ```bash
    #install cuda under Conda
    conda install -y cuda -c nvidia/label/cuda-11.8.0 #new method from https://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html#conda-installation
@@ -93,6 +93,23 @@ Install cuda, cudnn, tensorflow, and pytorch (Windows Native - Windows 7 or high
    python -c "import tensorflow as tf; print('tf version:', tf.__version__); print(tf.config.list_physical_devices('GPU'))"
    # Verify Pytorch installation
    python -c "import torch; print('Torch version:', torch.__version__); print(torch.cuda.is_available())"
+```
+
+In Linux:
+```bash
+(py310cu118) lkk@ThinkpadX1:~/MyRepo$ python3 -m pip install nvidia-cudnn-cu11==8.7.0.84
+(py310cu118) lkk@ThinkpadX1:~/MyRepo$ pip install tensorflow[and-cuda]==2.14.0
+Successfully installed absl-py-2.1.0 astunparse-1.6.3 cachetools-5.3.3 certifi-2024.7.4 charset-normalizer-3.3.2 flatbuffers-24.3.25 gast-0.6.0 google-auth-2.31.0 google-auth-oauthlib-1.0.0 google-pasta-0.2.0 grpcio-1.64.1 h5py-3.11.0 idna-3.7 keras-2.14.0 libclang-18.1.1 markdown-3.6 ml-dtypes-0.2.0 numpy-2.0.0 nvidia-cublas-cu11-11.11.3.6 nvidia-cuda-cupti-cu11-11.8.87 nvidia-cuda-nvcc-cu11-11.8.89 nvidia-cuda-runtime-cu11-11.8.89 nvidia-cudnn-cu11-8.7.0.84 nvidia-curand-cu11-10.3.0.86 nvidia-cusolver-cu11-11.4.1.48 nvidia-cusparse-cu11-11.7.5.86 nvidia-nccl-cu11-2.16.5 oauthlib-3.2.2 opt-einsum-3.3.0 packaging-24.1 pyasn1-0.6.0 pyasn1-modules-0.4.0 requests-2.32.3 requests-oauthlib-2.0.0 rsa-4.9 six-1.16.0 tensorboard-2.14.1 tensorboard-data-server-0.7.2 tensorflow-2.14.0 tensorflow-estimator-2.14.0 tensorflow-io-gcs-filesystem-0.37.1 tensorrt-8.5.3.1 termcolor-2.4.0 urllib3-2.2.2 wrapt-1.14.1
+(py310cu118) lkk@ThinkpadX1:~/MyRepo$ mkdir -p $CONDA_PREFIX/etc/conda/activate.d
+(py310cu118) lkk@ThinkpadX1:~/MyRepo$ echo 'CUDNN_PATH=$(dirname $(python -c "import nvidia.cudnn;print(nvidia.cudnn.__file__)"))' >> $CONDA_PREFIX/etc/conda/activate.d/env_vars.sh
+(py310cu118) lkk@ThinkpadX1:~/MyRepo$ echo 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$CONDA_PREFIX/lib/:$CUDNN_PATH/lib' >> $CONDA_PREFIX/etc/conda/activate.d/env_vars.sh
+(py310cu118) lkk@ThinkpadX1:~/MyRepo$ source $CONDA_PREFIX/etc/conda/activate.d/env_vars.sh
+$ cat /home/lkk/miniconda3/envs/py310cu118/lib/python3.10/site-packages/nvidia/cudnn/include/cudnn_version.h
+#define CUDNN_MAJOR 8
+#define CUDNN_MINOR 7
+(py310cu118) lkk@ThinkpadX1:~/MyRepo$ python3 -c "import tensorflow as tf; print('tf version:', tf.__version__); print(tf.config.list_physical_devices('GPU'))"
+pip uninstall numpy
+pip install numpy==1.26.4
 ```
 
 Install other python packages:
@@ -324,6 +341,50 @@ y = channel_freq([x_rg, h_freq, no]) #h_freq is array
 
 The figure of the channel frequency response is shown here:
 ![Channel Frequency Response](../imgs/ofdmchannelfreq.png)
+
+### DeepMIMO BER Evaluation
+`deepMIMO5.py`:
+ebno_db=5
+h: (1, 1, 1, 16, 10, 1) tau: (1,1,10)
+num_streams_per_tx=1
+b: (64, 1, 1, 2288), k=2288
+x_rg: (64, 1, 1, 14, 76) [batch_size, num_tx, num_streams_per_tx, num_ofdm_symbols, fft_size]
+print(y.shape) #[64, 1, 1, 14, 76] dim (3,4 removed) h_out: (64, 1, 1, 1, 16, 1, 44)
+h_hat: (64, 1, 1, 1, 1, 14, 44) [batch_size, num_rx, num_rx_ant, num_tx, num_streams_per_tx, num_ofdm_symbols,fft_size]
+x_hat: (64, 1, 1, 572)  [batch_size, num_tx, num_streams, num_data_symbols]
+llr_est: (64, 1, 1, 2288) [batch size, num_rx, num_rx_ant, n * num_bits_per_symbol]
+b_hat: (64, 1, 1, 2288)
+BER Value: 0.2825
+
+`AIsim_main2.py`:
+self.num_time_steps = 1 #num_ofdm_symbols
+ebno_db=5
+h_b: (2, 1, 1, 1, 16, 10, 14), tau_b: (2, 1, 1, 10)
+h_out: (2, 1, 1, 1, 16, 14, 76)
+b: (2, 1, 1, 3072) k=3072, 768*4=3072 RESOURCE_GRID.num_data_symbols * num_bits_per_symbol
+x_rg: (2, 1, 1, 14, 76) [batch_size, num_tx, num_streams_per_tx, num_ofdm_symbols, fft_size]
+y shape: (2, 1, 1, 14, 76) [batch size, num_rx, num_rx_ant, num_ofdm_symbols, fft_size]
+x_hat: (2, 1, 1, 768) 
+llr_est: (2, 1, 1, 3072)
+b_hat: (2, 1, 1, 3072)
+BER Value: 0.2317
+Perfect_csi: BER Value: 0.08251953125
+
+ApplyOFDMChannel error: (64, 1, 1, 1, 16, 1, 76)
+#inputs x :  [batch size, num_tx, num_tx_ant, num_ofdm_symbols, fft_size], complex
+#h_freq : [batch size, num_rx, num_rx_ant, num_tx, num_tx_ant, num_ofdm_symbols, num_subcarriers], complex Channel frequency responses
+#h_freq: (64, 1, 1, 1, 16, 1, 76)
+ValueError: operands could not be broadcast together with shapes (64,1,1,1,16,1,76) (64,1,1,1,2,14,76) 
+operands could not be broadcast together with shapes (64,1,1,1,16,1,76) (64,1,1,1,2,14,76) 
+
+h:(64, 1, 1, 1, 16, 1, 76), x: (64, 1, 1, 1, 2, 14, 76)
+(64, 1, 1, 1, 16, 1, 76), x: (64, 1, 1, 1, 2, 14, 76)
+
+h_b: (64, 1, 1, 1, 16, 10, 1), tau_b: (64, 1, 1, 10) (64, 1, 1, 1, 16, 1, 76)
+
+
+it_init_thread_state(): the LLVM backend is inactive because the LLVM shared library ("libLLVM.so") could not be found! Set the DRJIT_LIBLLVM_PATH environment variable to specify its path.
+
 
 ### discrete-time impulse response (time-domain)
 In the same way as we have created the frequency channel impulse response from the continuous-time response, we can use the latter to compute a discrete-time impulse response. This can then be used to model the channel in the time-domain through discrete convolution with an input signal. Time-domain channel modeling is necessary whenever we want to deviate from the perfect OFDM scenario, e.g., OFDM without cyclic prefix, inter-subcarrier interference due to carrier-frequency offsets, phase noise, or very high Doppler spread scenarios, as well as other single or multicarrier waveforms (OTFS, FBMC, UFMC, etc).
