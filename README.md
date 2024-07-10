@@ -1,280 +1,74 @@
-# AIsensing for Radar and Communication
+# Deep Learning-Based AI Processing Framework for Wireless Communication and Radar Sensing
 
-## MATLAB Simulation
+## Introduction
 
-### OFDM Communication
-One of the problem of OFDM based communication is the high peak-to-average power ratio (PAPR) caused by IFFT. The peak power is proportional to IFFT length (L). We can minimize PAPR in UL via DFT. 
+Deep learning has revolutionized various application scenarios by significantly improving performance across domains. In the context of wireless communication, researchers have explored the potential of deep learning techniques to enhance system efficiency and reliability. In this work, we present our novel AI backend processing framework, designed to address critical challenges in wireless communication and radar sensing.
 
-The DFT-S technique involves first passing the set of transmit symbols - got from a Q-ary alphabet like QAM or QPSK through a Discrete Fourier Transform (DFT) block, before they are mapped to the inputs of an Inverse Discrete Fourier Transform (IDFT) block. The DFT and IDFT operations are computed very efficiently using FFT and IFFT algorithms. The size of the IDFT block (L) is chosen to be an integer (K) multiple of the size of the DFT block.
+## Existing Solutions and Their Limitations
+One notable solution in this field is [NVIDIA SIONNA](https://developer.nvidia.com/sionna), which is open sourced at [sionna](https://github.com/NVlabs/sionna). SIONNA leverages the power of Tensorflow to accelerate AI physical-layer research. However, it has limitations:
 
-The comparison of OFDM and DFTS-OFDM is shown here:
-![DFTS-OFDM compare](imgs/figure-dft-precoded-ofdm.png)
+1. **Simulation-Only Approach:** SIONNA operates solely on simulation data, lacking a real radio interface. This restricts its applicability to practical scenarios.
 
-The DFTS-OFDM communication diagram is shown here:
-![DFTS-OFDM Diagram](imgs/dftsofdm.png)
+2. **Tensorflow Dependency:** SIONNA relies exclusively on the Tensorflow framework, limiting flexibility for researchers who prefer other deep learning libraries. Sionna also does not support for Tensorflow versions `>2.14` due to the stopped support of the `complex` data type in Tensorflow Layers.
 
-Communication Sample code:
-  * [simpleQAM](matlab/simpleQAM.mlx): test the basic QAM modulation, draw the Constellation Diagram
-  * [simpleofdm](matlab/simpleofdm.mlx): simulates basic ofdm connection, test the BER
-  * [80211ofdm](matlab/ofdm_communication.mlx): simulate the IEEE802.11 OFDM communication
-  * [dfts_ofdm](matlab/dfts_ofdm.mlx): simulate the DFT-S OFDM to minimize PAPR in UL via DFT
+3. **Basic Neural Networks:** While effective, SIONNA's neural network architecture remains basic, missing out on advanced transformer models.
 
-The Constellation Diagram of the communication simulation:
-![64qamcommunication](64QAM.png)
+## Our Proposed AI Backend Processing Framework
 
-### OFDM Radar
-OFDM Radar diagram is shown here:
-![OFDMRadardiagram](imgs/ofdmradardiagram.png)
-
-OFDM Radar Sample code:
-  * [DFT-spread-OFDM Radar](matlab/periodogram_radar_dfts_one.mlx): Periodogram-based OFDM Radar with DFT-spread Single Target
-  * [DFT-spread-OFDM Radar](matlab/periodogram_radar.mlx): DFT-spread-OFDM Radar simulation (two targets)
-
-The simulation results of the DFTS-OFDM radar for two targets:
-![ofdmradarheatmap](imgs/ofdmradarheatmap.png)
-
-## ADALM-PLUTO Radio devices
-ADALM-PLUTO is based on Analog Devices AD9363--Highly Integrated RF Agile Transceiver and Xilinx® Zynq Z-7010 FPGA
-  * Website: https://www.analog.com/en/design-center/evaluation-hardware-and-software/evaluation-boards-kits/adalm-pluto.html#eb-overview
-  * RF coverage from 325 MHz to 3.8 GHz
-  * Up to 20 MHz of instantaneous bandwidth
-  * up to 61.44 Mega Samples per Second (MSPS)
-
-ADALM-PLUTO Overview: https://wiki.analog.com/university/tools/pluto
-
-ADALM-PLUTO for End Users: https://wiki.analog.com/university/tools/pluto/users
-  * libiio USB device for communicating to the RF device
-  * enumerate with the 192.168.2.1 IP address by default.
-  * provides access to the Linux console on the Pluto device via USB Communication Device Class Abstract Control Model (USB CDC ACM) specification
-  * Windows driver: https://wiki.analog.com/university/tools/pluto/drivers/windows
-  * Linux driver: https://wiki.analog.com/university/tools/pluto/drivers/linux
-  * MATLAB: https://www.mathworks.com/hardware-support/adalm-pluto-radio.html
-    * Install Support Package for Analog Devices ADALM-PLUTO Radio: https://www.mathworks.com/help/supportpkg/plutoradio/ug/install-support-package-for-pluto-radio.html
-    * Setup: https://www.mathworks.com/help/supportpkg/plutoradio/ug/guided-host-radio-hardware-setup.html
-    * Manual Setup: https://www.mathworks.com/help/supportpkg/plutoradio/ug/manual-host-radio-hardware-setup.html
-  * PlutoSDR (using python bindings to libiio): https://github.com/radiosd/PlutoSdr
-  * pyadi-iio: https://wiki.analog.com/resources/tools-software/linux-software/pyadi-iio, https://analogdevicesinc.github.io/pyadi-iio/
-  * GNU Radio and IIO Devices: gr-iio: https://wiki.analog.com/resources/tools-software/linux-software/gnuradio
-  * Accessing Pluto's FPGA Over JTAG: https://wiki.analog.com/university/tools/pluto/devs/fpga
-  * HDL code: https://github.com/analogdevicesinc/hdl/tree/master/projects/pluto
-
-https://ez.analog.com/ez-blogs/b/engineerzone-spotlight/posts/how-to-construct-a-beamformer-with-the-adalm-pluto
-
-https://wiki.analog.com/resources/tools-software/linux-software/libiio_internals#high-speed_mmap_interface
-
-https://github.com/analogdevicesinc/libiio
-
-ADI Book Software-Defined Radio for Engineers, 2018: https://www.analog.com/en/education/education-library/software-defined-radio-for-engineers.html
-
-Analog Devices Board Support Packages Toolbox For MATLAB and Simulink: https://wiki.analog.com/resources/eval/user-guides/matlab_bsp
-
-PlutoSDR quick start: https://wiki.analog.com/university/tools/pluto/users/quick_start
-  * Download windows driver from: https://github.com/analogdevicesinc/plutosdr-m2k-drivers-win/releases
-  * The terminal settings are 115200 baud, 8 bits, no parity, 1 stop bit. This is referred to as 115200-8N1. The default username is root, and the default root password is analog.
-  * The IP number is set by the device, and can be found by looking inside the ADALM-PLUTO's mass storage device, and the info.html page.
-  * Checking from serial port: ifconfig usb0
-  * Check IIO devices "iio_info -s", "iio_attr -a -C"
-
-```bash 
-sudo apt install nmap
-ipconfig #check the current ip range
-nmap -sn 192.168.86.0/24 #scan IP in the current network, nmap -sn 192.168.1.0/24 if the current network IP is 192.168.1.73
-ssh analog@192.168.1.69 #password: analog
-#second option
-ssh analog@phaser.local #password: analog analog@192.168.1.83 (wifi) analog@192.168.1.73 (eth0)
-
-(mycondapy310) PS D:\Developer\radarsensing> iio_attr -a -C fw_version   
-Using auto-detected IIO context at URI "usb:2.46.5"
-fw_version: v0.35
-iio_info -u ip:phaser.local:50901 #SDR in phaser in pi
-iio_info -u ip:phaser.local #phaser in pi
-(mycondapy310) PS D:\Developer\radarsensing> iio_info -u ip:192.168.2.16
-(mycondapy310) PS D:\Developer\radarsensing> ssh root@192.168.2.16 #ssh root@pluto.local
-#password: analog
-iio_info -u "ip:192.168.1.10" #antsdr
-ssh root@192.168.1.10 #password: analog
-v0.34-dirty
-https://github.com/MicroPhase/antsdr-fw
-# fw_printenv attr_name
-attr_name=compatible
-# fw_printenv attr_val
-attr_val=ad9361
-# fw_printenv compatible
-compatible=ad9361
-# fw_printenv mode
-mode=2r2t
-```
-Follow this link: https://wiki.analog.com/university/tools/pluto/users/customizing#updating_to_the_ad9364, to enable the second channel. Current PlutoSDR is Rev.C
-```bash 
-ssh root@pluto.local
-#password: analog
-v0.37
-https://wiki.analog.com/university/tools/pluto
-
-# fw_setenv attr_name compatible
-# fw_setenv attr_val ad9361
-# fw_setenv compatible ad9361
-# fw_setenv mode 2r2t
-# reboot
-```
-
-Upgrade the firmware: https://wiki.analog.com/university/tools/pluto/users/firmware
+Our new AI processing framework aims to overcome these limitations. It offers the following features:
 
 
-After the driver installation, the pluto device can be connected and tested via ADI IIO:
-![plutoiio](imgs/plutoiio.png)
+1. **Hybrid Data Sources: Real Hardware Radio and Simulation Data**
+   - Our framework interfaces seamlessly with both real hardware radio systems (support Linux Industry IO and Analog's tranceiver chips) and simulation data (e.g., 5G CDL Channel dataset and DeepMIMO dataset). Researchers can seamlessly interface our framework with physical software-defined radio (SDR) hardware. This dual approach ensures robustness and practical relevance. We also integrate with the DeepMIMO raytracing dataset, enabling comprehensive performance evaluation.
 
-Install IIO_oscilloscope: https://wiki.analog.com/resources/tools-software/linux-software/iio_oscilloscope
+2. **Flexible Libraries: Numpy, Pytorch, and Huggingface Transformers**
+   - We leverage Numpy for efficient data preprocessing and simulation data preparation.
+   - Pytorch serves as our primary deep learning framework, allowing researchers to build complex neural architectures.
+   - Huggingface Transformers enhance our capabilities with advanced transformer models.
 
-The spectrum diagram from IIO:
-![plutoiiospectrum](imgs/plutoiiospectrum.png)
+3. **Dual Capability: Communication and Radar Sensing**
+   - Our framework provides AI processing capabilities for both communication tasks (e.g., OFDM symbol detection, demodulation, channel estimation) and radar sensing (target detection and tracking).
+   - By combining these functionalities, we create a unified solution for diverse wireless applications.
 
-The pluto device is also connected via terminal (tera term):
-(imgs/plutoterminal.png)
+4. **Empowering Students via Pythonic Architecture**
+   - Our backend processing framework is designed in Python, promoting readability, extensibility, and collaboration.
+   - It offers a clear modular distinction between domain-specific components (e.g., OFDM communication, signal processing) and general-purpose deep learning models.
+   - Our open environment encourages Computer Science and Software Engineering students to innovate. Students can develop software and deep learning models using a specified general-purpose dataset format, without requiring deep domain-specific knowledge in wireless communication. 
+   - Our AI processing framework bridges the gap between theory and practice, empowering researchers and students alike. As we refine our implementation, we anticipate further breakthroughs in wireless communication and radar sensing. By fostering collaboration and creativity, we build upon the solid foundation we've established.
 
-### Radio setup in MATLAB 
-Connect the radio device to MATLAB and perform connect test:
-![Testconnection](imgs/testplutoconnection.png)
+The overall system architecture is shown here:
 
-![Testconnection2](imgs/testplutoconnection2.png)
+<img width="1066" alt="image" src="https://github.com/lkk688/AIsensing/assets/6676586/7817a076-66cd-49a3-aeba-c960fde4ef86">
 
-Write the radio test code for RX and TX: [sdrmatlab/plutoradio.mlx], [sdrmatlab/radioreceive.mlx], [sdrmatlab/radiotransmit.mlx]
 
-Use the radio to perform spectrum test via code [spectrumanalysis](sdrmatlab/spectrumanalysis.mlx)
-![SpectrumTest](imgs/spectrumtest.png)
+## Detailed Documents for AIsensing
 
-We also tested the transmission of OFDM waveform in Radar mode and analyze the spectrum: [sdrmatlab/OFDMRadar.m], the spectrum result is shown here.
+1. [AIprocessing](deeplearning/AIprocessing.md) contains the setup and implementation details of the AI processing framework for Radar and Communication based on Numpy, Pytorch and Transformers.
+   - [AIsim_main2.py](deeplearning/AIsim_main2.py) is the created main code to perform complete OFDM transmission over CDL or DeepMIMO channel dataset.
+   - [deepMIMO5.py](deeplearning/deepMIMO5.py) contains the major code related to OFDM basic modules and DeepMIMO Channel dataset
+   - [ofdmtrain_pytorch2.py](deeplearning/ofdmtrain_pytorch2.py) contains the training code of Pytorch models for OFDM communication simulation
+   - [ofdmeval_pytorch.py](deeplearning/ofdmeval_pytorch.py) contains the inference and evaluation code of Pytorch models for OFDM communication simulation
+   - [wave2vec_ofdm.py](deeplearning/wave2vec_ofdm.py) contains the Wave2Vec transformer models for OFDM communication
 
-When antenna is not attached:
-![OFDMtransmitreceive-noantenna](imgs/OFDMtransmitreceive-noantenna.png)
+2. [MATLAB](matlab/matlabsim.md) contains the details of the MATLAB Interface to the SDR Device and Communication Simulation.
+   - [simpleQAM](matlab/simpleQAM.mlx): test the basic QAM modulation, draw the Constellation Diagram
+   - [simpleofdm](matlab/simpleofdm.mlx): simulates basic ofdm connection, test the BER
+   - [80211ofdm](matlab/ofdm_communication.mlx): simulate the IEEE802.11 OFDM communication
+   - [dfts_ofdm](matlab/dfts_ofdm.mlx): simulate the DFT-S OFDM to minimize PAPR in UL via DFT
+   - [DFT-spread-OFDM Radar](matlab/periodogram_radar_dfts_one.mlx): Periodogram-based OFDM Radar with DFT-spread Single Target
+   - [DFT-spread-OFDM Radar](matlab/periodogram_radar.mlx): DFT-spread-OFDM Radar simulation (two targets)
 
-When antenna is attached, we can see the received signal spectrum:
-![OFDMtransmitreceive](imgs/OFDMtransmitreceive.png)
 
-### Python interface
-PyADI-IIO: https://wiki.analog.com/resources/tools-software/linux-software/pyadi-iio
+3. [SDR Radios](sdradi/sdr_radios.md) contains the details of the interface to SDR Radio Devices.
+   - [myad9361.py](sdradi/myad9361.py) Test and run the AD9361 transceiver
+   - [myad9361class.py](sdradi/myad9361class.py) Put all ADI transeiver related code into one class
+   - [myadiclass.py](sdradi/myadiclass.py) extends the `myad9361class.py`
+   - [myofdm.py](sdradi/myofdm.py) OFDM related code in one library (subset of `deepMIMO5.py`), used for radio device
+   - [myofdmwithsdr.py](sdradi/myofdmwithsdr.py) Integrated OFDM MIMO transmission with SDR radio
 
-```bash 
-conda install -c conda-forge pylibiio
-pip install pyadi-iio
-pip install matplotlib
-pip install scipy
-pip install PyQt5
-pip install pyqtgraph
+4. [Joint Communication and Radar Hardware Systems](sdradi/sdr.md) contains the implementation details and software framework to the software-defined radio devices for communication and radar sensing.
+   - [myradar3.py](sdradi/myradar3.py) Radar device control related code
+   - [radar_fmcw3.py](sdradi/radar_fmcw3.py) Implements FMCW Radar
+   - [radarappwdevice3.py](sdradi/radarappwdevice3.py) Latest main entrance file for Radar device
 
-pip install kiwisolver
-pip install Pillow
-pip install numpy matplotlib
-conda install pyqtgraph 
-conda install -c anaconda pyqt 
-conda install -c anaconda numpy
-pip install pygame
-conda install -c anaconda pandas
-pip install opencv-python --upgrade
-```
 
-New setup of mycondapy311:
-```bash
-conda create --name mycondapy311 python=3.11
-conda activate mycondapy311
-pip install pyqt6
-#test pyqt6: sdrpysim/testpyqt6.py
-pip install pyqtgraph
-pip install pyopengl
-#Successfully installed numpy-1.26.1 pyqtgraph-0.13.3
-#import pyqtgraph as pg
-#test pyqtgraph: sdrpysim\pyqt6qtgraphtest.py
-pip install matplotlib #conda install matplotlib will install pyqt5
-#Successfully installed contourpy-1.2.0 cycler-0.12.1 fonttools-4.44.0 kiwisolver-1.4.5 matplotlib-3.8.1 packaging-23.2 pillow-10.1.0 pyparsing-3.1.1 python-dateutil-2.8.2 six-1.16.0
-pip install opencv-python-headless
-pip install mayavi
-#pip3 install PySide6 #will cause pyqt6 not working, but mayavi needs PySide6
-pip install pyqt5 #needed by mayavi and matplotlib
-
-conda install -c conda-forge jupyterlab
-#conda install matplotlib
-#conda install numpy #already installed
-#conda install -c anaconda pyqt 
-#conda install pyqtgraph
-conda install -c conda-forge pylibiio
-pip install pyadi-iio
-pip install pygame
-
-pip install -U --trusted-host www.open3d.org -f http://www.open3d.org/docs/latest/getting_started.html open3d
-# Verify installation
-python -c "import open3d as o3d; print(o3d.__version__)"
-# Open3D CLI
-open3d example visualization/draw
-```
-
-Test throughput
-```bash 
-(mycondapy310) PS D:\Developer\radarsensing> iio_readdev -u ip:pluto.local -B -b 65768 cf-ad9361-lpc 
-Throughput: 22 MiB/s
-(mycondapy310) PS D:\Developer\radarsensing> iio_readdev -u ip:192.168.2.1 -B -b 65768 cf-ad9361-lpc
-Throughput: 22 MiB/s
- iio_readdev -u ip:192.168.1.10 -B -b 65768 cf-ad9361-lpc
-Throughput: 50 MiB/s
-(mycondapy310) PS C:\Users\lkk68> iio_readdev -u ip:phaser.local:50901 -B -b 65768 cf-ad9361-lpc #PC to pi
-Throughput: 1 MiB/s
-(mycondapy310) PS C:\Users\lkk68> iio_readdev -u ip:phaser.local:50901 -B -b 65768 cf-ad9361-lpc #PC to pi (new USB port)
-Throughput: 6 MiB/s
-(mycondapy310) PS D:\Developer\radarsensing> iio_readdev -u ip:phaser.local:50901 -B -b 65768 cf-ad9361-lpc
-Throughput: 16 MiB/s
-#inside the raspberry Pi
-analog@phaser:~ $  iio_readdev -u ip:pluto.local -B -b 65768 cf-ad9361-lpc
-Throughput: 4 MiB/s
-analog@phaser:~ $ iio_readdev -u ip:pluto.local -B -b 65768 cf-ad9361-lpc #changed USB port
-Throughput: 22 MiB/s
-
-```
-
-### Phaser Calibration
-```bash 
-(base) PS D:\Developer\radarsensing\sdradi\phaser> scp analog@phaser.local:~/pyadi-iio/examples/phaser/channel_cal_val.pkl .
-(base) PS D:\Developer\radarsensing\sdradi\phaser> scp analog@phaser.local:~/pyadi-iio/examples/phaser/gain_cal_val.pkl .
-(base) PS D:\Developer\radarsensing\sdradi\phaser> scp analog@phaser.local:~/pyadi-iio/examples/phaser/phase_cal_val.pkl .
-```
-
-pyqtbug: in "D:\anaconda3\envs\mycondapy310\Lib\site-packages\pyqtgraph\widgets\GraphicsView.py" line 371, change to the followng code:
-```bash 
-  def mouseMoveEvent(self, ev):
-      if self.lastMousePos is None:
-          self.lastMousePos = Point(ev.pos())
-      mousepoint = self.lastMousePos
-      x,y=mousepoint
-      mousepoint = QtCore.QPoint(int(x), int(y))
-      delta = Point(ev.pos() - QtCore.QPoint(int(x), int(y)))
-      #delta = Point(ev.pos() - QtCore.QPoint(*self.lastMousePos)) #*self.lastMousePos
-      self.lastMousePos = Point(ev.pos())
-```
-
-Install opengl
-```bash
-pip install PyOpenGL PyOpenGL_accelerate
-pip install pyopengl
-#try: import pyqtgraph.opengl as gl
-```
-
-# Deep Learning with DeepMIMO Dataset
-Install Pytorch and TensorFlow (some package needs Tensorflow). Following [Tensorflow Pip](https://www.tensorflow.org/install/pip) page to install Tensorflow:
-```bash
-(mypy310) lkk@Alienware-LKKi7G8:~/Developer/AIsensing$ python3 -m pip install tensorflow[and-cuda]
-# Verify the installation:
-python3 -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU'))"
-```
-
-Download [DeepMIMO](https://www.deepmimo.net/) dataset.
-
-Follow [link](https://www.deepmimo.net/versions/v2-python/), install DeepMIMO python package:
-```bash
-pip install DeepMIMO
-```
-
-Select and download a scenario from the scenarios [page](https://www.deepmimo.net/scenarios/), for example, select Outdoor scenario1 (O1). Download 'O1_60' and 'O1_3p5' to the 'data' folder.
-
-Run the DeepMIMO simulation and obtain the BER curve for various configurations:
-```bash
-python deeplearning/deepMIMO5_sim.py
-```
-[BER Curve](imgs/berlist.jpg)

@@ -1,53 +1,5 @@
 
-# Deep Learning-Based AI Processing Framework for Wireless Communication and Radar Sensing
-
-## Introduction
-
-Deep learning has revolutionized various application scenarios by significantly improving performance across domains. In the context of wireless communication, researchers have explored the potential of deep learning techniques to enhance system efficiency and reliability. In this work, we present our novel AI backend processing framework, designed to address critical challenges in wireless communication and radar sensing.
-
-## Existing Solutions and Their Limitations
-
-### NVIDIA SIONNA
-
-One notable solution in this field is [NVIDIA SIONNA](https://developer.nvidia.com/sionna), which is open sourced at [sionna](https://github.com/NVlabs/sionna). SIONNA leverages the power of Tensorflow to accelerate AI physical-layer research. However, it has limitations:
-
-1. **Simulation-Only Approach:** SIONNA operates solely on simulation data, lacking a real radio interface. This restricts its applicability to practical scenarios.
-
-2. **Tensorflow Dependency:** SIONNA relies exclusively on the Tensorflow framework, limiting flexibility for researchers who prefer other deep learning libraries.
-
-3. **Basic Neural Networks:** While effective, SIONNA's neural network architecture remains basic, missing out on advanced transformer models.
-
-## Our Proposed AI Backend Processing Framework
-
-### Key Features
-
-Our new AI processing framework aims to overcome these limitations. It offers the following features:
-
-1. **Hybrid Data Sources: Real Hardware Radio and Simulation Data**
-   - Our framework interfaces seamlessly with both real hardware radio systems and simulation data. This dual approach ensures robustness and practical relevance.
-
-2. **Flexible Libraries: Numpy, Pytorch, and Huggingface Transformers**
-   - We leverage Numpy for efficient data preprocessing and simulation data preparation.
-   - Pytorch serves as our primary deep learning framework, allowing researchers to build complex neural architectures.
-   - Huggingface Transformers enhance our capabilities with advanced transformer models.
-
-3. **Dual Capability: Communication and Radar Sensing**
-   - Our framework provides AI processing capabilities for both communication tasks (e.g., OFDM symbol detection, demodulation, channel estimation) and radar sensing (target detection and tracking).
-   - By combining these functionalities, we create a unified solution for diverse wireless applications.
-
-### Implementation Details
-
-1. **Pythonic Architecture**
-   - Our backend processing framework is designed in Python, promoting readability, extensibility, and collaboration.
-   - It offers a clear modular distinction between domain-specific components (e.g., OFDM communication, signal processing) and general-purpose deep learning models.
-
-2. **Integration with Physical Hardware and DeepMIMO Dataset**
-   - Researchers can seamlessly interface our framework with physical software-defined radio (SDR) hardware.
-   - Additionally, we integrate with the DeepMIMO raytracing dataset, enabling comprehensive performance evaluation.
-
-3. **Empowering Students**
-   - Our open environment encourages Computer Science and Software Engineering students to innovate. Students can develop software and deep learning models using a specified general-purpose dataset format, without requiring deep domain-specific knowledge in wireless communication. 
-   - Our AI processing framework bridges the gap between theory and practice, empowering researchers and students alike. As we refine our implementation, we anticipate further breakthroughs in wireless communication and radar sensing. By fostering collaboration and creativity, we build upon the solid foundation we've established.
+# Implementation and Setup of the AI Framework
 
 ## Setup Python Environment
 
@@ -138,6 +90,10 @@ Install Nvidia sionna from [SionnaGithub](https://github.com/NVlabs/sionna/tree/
 $ pip install sionna
 (mycondapy310) (base) lkk@lkk-intel12:~/Developer$ git clone https://github.com/NVlabs/sionna.git
 ```
+
+Nvidia sionna requires Tensorflow (2.10 - 2.14). Latest version of Tensorflow (e.g., 2.16) may not support due to the `complex` data type for tf layers. Sionna also requires Tensorflow with cuda backend. If cuda is not available, LLVM backend is required. If your tensorflow cannot detect the GPU and you do not have the LLVM backend, it may show the following error: `it_init_thread_state(): the LLVM backend is inactive because the LLVM shared library ("libLLVM.so") could not be found! Set the DRJIT_LIBLLVM_PATH environment variable to specify its path.`
+
+Run `deeplearning/MIMO_OFDM_Transmissions_over_CDL.ipynb` to test the Nvidia sionna.
 
 ## DeepMIMO
 [DeepMIMO](https://deepmimo.net/) is a generic dataset that enables a wide range of machine/deep learning applications for MIMO systems. It takes as input a set of parameters (such as antenna array configurations and time-domain/OFDM parameters) and generates MIMO channel realizations, corresponding locations, angles of arrival/departure, etc., based on these parameters and on a ray-tracing scenario selected from those available in DeepMIMO.
@@ -261,6 +217,29 @@ h_b=h_b.numpy()
 The plot of the channel impulse response is shown here (max 10 paths)
 ![Channel Impulse Response](../imgs/deepmimo_chimpulse.png)
 
+## Deep Learning with DeepMIMO Dataset
+Install Pytorch and TensorFlow (some package needs Tensorflow). Following [Tensorflow Pip](https://www.tensorflow.org/install/pip) page to install Tensorflow:
+```bash
+(mypy310) lkk@Alienware-LKKi7G8:~/Developer/AIsensing$ python3 -m pip install tensorflow[and-cuda]
+# Verify the installation:
+python3 -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU'))"
+```
+
+Download [DeepMIMO](https://www.deepmimo.net/) dataset.
+
+Follow [link](https://www.deepmimo.net/versions/v2-python/), install DeepMIMO python package:
+```bash
+pip install DeepMIMO
+```
+
+Select and download a scenario from the scenarios [page](https://www.deepmimo.net/scenarios/), for example, select Outdoor scenario1 (O1). Download 'O1_60' and 'O1_3p5' to the 'data' folder.
+
+Run the DeepMIMO simulation and obtain the BER curve for various configurations:
+```bash
+python deeplearning/deepMIMO5_sim.py
+```
+[BER Curve](imgs/berlist.jpg)
+
 ## Get CIR from Other Channels
 The $h_b$, $tau_b$ generated is Channel Impulse Response (CIR), $h_b$'s shape meaning is `complex [batch, num_rx, num_rx_ant, num_tx, num_tx_ant, num_paths, num_time_steps]`, $tau_b$'s shape `float [batch, num_rx, num_tx, num_paths]`. We can also use simulation to generate CIR based on assumptions of Gaussian distributed i.i.d. path coefficients and uniformly distributed i.i.d. path delays:
 ```bash
@@ -341,49 +320,6 @@ y = channel_freq([x_rg, h_freq, no]) #h_freq is array
 
 The figure of the channel frequency response is shown here:
 ![Channel Frequency Response](../imgs/ofdmchannelfreq.png)
-
-### DeepMIMO BER Evaluation
-`deepMIMO5.py`:
-ebno_db=5
-h: (1, 1, 1, 16, 10, 1) tau: (1,1,10)
-num_streams_per_tx=1
-b: (64, 1, 1, 2288), k=2288
-x_rg: (64, 1, 1, 14, 76) [batch_size, num_tx, num_streams_per_tx, num_ofdm_symbols, fft_size]
-print(y.shape) #[64, 1, 1, 14, 76] dim (3,4 removed) h_out: (64, 1, 1, 1, 16, 1, 44)
-h_hat: (64, 1, 1, 1, 1, 14, 44) [batch_size, num_rx, num_rx_ant, num_tx, num_streams_per_tx, num_ofdm_symbols,fft_size]
-x_hat: (64, 1, 1, 572)  [batch_size, num_tx, num_streams, num_data_symbols]
-llr_est: (64, 1, 1, 2288) [batch size, num_rx, num_rx_ant, n * num_bits_per_symbol]
-b_hat: (64, 1, 1, 2288)
-BER Value: 0.2825
-
-`AIsim_main2.py`:
-self.num_time_steps = 1 #num_ofdm_symbols
-ebno_db=5
-h_b: (2, 1, 1, 1, 16, 10, 14), tau_b: (2, 1, 1, 10)
-h_out: (2, 1, 1, 1, 16, 14, 76)
-b: (2, 1, 1, 3072) k=3072, 768*4=3072 RESOURCE_GRID.num_data_symbols * num_bits_per_symbol
-x_rg: (2, 1, 1, 14, 76) [batch_size, num_tx, num_streams_per_tx, num_ofdm_symbols, fft_size]
-y shape: (2, 1, 1, 14, 76) [batch size, num_rx, num_rx_ant, num_ofdm_symbols, fft_size]
-x_hat: (2, 1, 1, 768) 
-llr_est: (2, 1, 1, 3072)
-b_hat: (2, 1, 1, 3072)
-BER Value: 0.2317
-Perfect_csi: BER Value: 0.08251953125
-
-ApplyOFDMChannel error: (64, 1, 1, 1, 16, 1, 76)
-#inputs x :  [batch size, num_tx, num_tx_ant, num_ofdm_symbols, fft_size], complex
-#h_freq : [batch size, num_rx, num_rx_ant, num_tx, num_tx_ant, num_ofdm_symbols, num_subcarriers], complex Channel frequency responses
-#h_freq: (64, 1, 1, 1, 16, 1, 76)
-ValueError: operands could not be broadcast together with shapes (64,1,1,1,16,1,76) (64,1,1,1,2,14,76) 
-operands could not be broadcast together with shapes (64,1,1,1,16,1,76) (64,1,1,1,2,14,76) 
-
-h:(64, 1, 1, 1, 16, 1, 76), x: (64, 1, 1, 1, 2, 14, 76)
-(64, 1, 1, 1, 16, 1, 76), x: (64, 1, 1, 1, 2, 14, 76)
-
-h_b: (64, 1, 1, 1, 16, 10, 1), tau_b: (64, 1, 1, 10) (64, 1, 1, 1, 16, 1, 76)
-
-
-it_init_thread_state(): the LLVM backend is inactive because the LLVM shared library ("libLLVM.so") could not be found! Set the DRJIT_LIBLLVM_PATH environment variable to specify its path.
 
 
 ### discrete-time impulse response (time-domain)
@@ -508,4 +444,70 @@ The function of `cir_to_time_channel` assumes that a sinc filter is used for pul
 for $`\ell`$ ranging from $l_{min}$ to $l_{max}$, and where $W$ is the $bandwidth$. Each tap ($\bar{h}_{b, \ell}$) represents the combined effect of all paths at a specific time lag ($\ell$). The sinc function accounts for the time delay and phase shift due to each path. Input $a$ is Path coefficients: `[batch size, num_rx, num_rx_ant, num_tx, num_tx_ant, num_paths, num_time_steps], complex`, e.g., `(64, 1, 1, 1, 16, 10, 1)`. $tau$ is Path delays [s]: `[batch size, num_rx, num_tx, num_paths], float`, e.g., `(64, 1, 1, 10)`. Output $hm$ is Channel taps coefficients: `[batch size, num_rx, num_rx_ant, num_tx, num_tx_ant, num_time_steps, l_max - l_min + 1], complex`, e.g., `[64, 1, 1, 1, 16, 1, 27]`.
 The generated `h` is shown in this figure:
 ![Discrete Time CIR](../imgs/ofdm_discretetimeCIR.png)
-        
+
+## OFDM Transmission Code
+### CDL and DeepMIMO Ttesting
+`deeplearning/AIsim_main2.py` is created to perform complete OFDM transmission over CDL or DeepMIMO channel dataset. The major class is `class Transmitter()`.
+
+`def test_CDLchannel()` inside the `deeplearning/AIsim_main2.py` is used to test the OFDM transmission over the CDL OFDM channel (`channeldataset='cdl'`), `channeltype='time'` and `channeltype='ofdm'` with `perfect_csi=False` and `perfect_csi=True` are tested inside this function. The dictionary data obtained after OFDM transmission is saved in `data/cdl_time_saved_ebno5.npy`, `data/cdl_time_saved_ebno5perfectcsi.npy`, `data/cdl_ofdm_saved_ebno5.npy`, and `data/cdl_ofdm_saved_ebno5perfectcsi.npy`.
+
+`test_DeepMIMOchannel()` inside the `deeplearning/AIsim_main2.py` is used to test the OFDM transmission over the DeepMIMO OFDM channel (`channeldataset='deepmimo'`)
+
+
+### BER Evaluation
+`def sim_bersingle2` performs BER test for `channeldataset='deepmimo'` and `channeldataset='cdl'`, `channeltype='ofdm'` or `channeltype='time'`, and draws a single BER and BLER curve for one scenario. The following cases are tested with BER curves.
+```bash
+    bers, blers, BERs = sim_bersingle2(channeldataset='cdl', channeltype='time', NUM_BITS_PER_SYMBOL = 2, EBN0_DB_MIN = -5.0, EBN0_DB_MAX = 25.0, \
+                   BATCH_SIZE = 32, NUM_UT = 1, NUM_BS = 1, NUM_UT_ANT = 2, NUM_BS_ANT = 16, showfigure = False, datapathbase='data/')
+    bers, blers, BERs = sim_bersingle2(channeldataset='deepmimo', channeltype='time', NUM_BITS_PER_SYMBOL = 2, EBN0_DB_MIN = -5.0, EBN0_DB_MAX = 25.0, \
+                   BATCH_SIZE = 32, NUM_UT = 1, NUM_BS = 1, NUM_UT_ANT = 1, NUM_BS_ANT = 16, showfigure = False, datapathbase='data/')
+    bers, blers, BERs = sim_bersingle2(channeldataset='cdl', channeltype='ofdm', NUM_BITS_PER_SYMBOL = 2, EBN0_DB_MIN = -5.0, EBN0_DB_MAX = 25.0, \
+                   BATCH_SIZE = 128, NUM_UT = 1, NUM_BS = 1, NUM_UT_ANT = 2, NUM_BS_ANT = 16, showfigure = False, datapathbase='data/')
+    bers, blers, BERs = sim_bersingle2(channeldataset='deepmimo', channeltype='ofdm', NUM_BITS_PER_SYMBOL = 2, EBN0_DB_MIN = -5.0, EBN0_DB_MAX = 25.0, \
+                   BATCH_SIZE = 128, NUM_UT = 1, NUM_BS = 1, NUM_UT_ANT = 1, NUM_BS_ANT = 16, showfigure = False, datapathbase='data/')
+```
+
+`sim_bermulti()` contains multiple BER testing cases and put many figures into one BER comparison graph.
+
+### deepMIMO5 and AIsim Main2 comparison (for debug)
+`deepMIMO5.py`:
+ebno_db=5
+h: (1, 1, 1, 16, 10, 1) tau: (1,1,10)
+num_streams_per_tx=1
+b: (64, 1, 1, 2288), k=2288
+x_rg: (64, 1, 1, 14, 76) [batch_size, num_tx, num_streams_per_tx, num_ofdm_symbols, fft_size]
+print(y.shape) #[64, 1, 1, 14, 76] dim (3,4 removed) h_out: (64, 1, 1, 1, 16, 1, 44)
+h_hat: (64, 1, 1, 1, 1, 14, 44) [batch_size, num_rx, num_rx_ant, num_tx, num_streams_per_tx, num_ofdm_symbols,fft_size]
+x_hat: (64, 1, 1, 572)  [batch_size, num_tx, num_streams, num_data_symbols]
+llr_est: (64, 1, 1, 2288) [batch size, num_rx, num_rx_ant, n * num_bits_per_symbol]
+b_hat: (64, 1, 1, 2288)
+BER Value: 0.2825
+
+`AIsim_main2.py`:
+self.num_time_steps = 1 #num_ofdm_symbols
+ebno_db=5
+h_b: (2, 1, 1, 1, 16, 10, 14), tau_b: (2, 1, 1, 10)
+h_out: (2, 1, 1, 1, 16, 14, 76)
+b: (2, 1, 1, 3072) k=3072, 768*4=3072 RESOURCE_GRID.num_data_symbols * num_bits_per_symbol
+x_rg: (2, 1, 1, 14, 76) [batch_size, num_tx, num_streams_per_tx, num_ofdm_symbols, fft_size]
+y shape: (2, 1, 1, 14, 76) [batch size, num_rx, num_rx_ant, num_ofdm_symbols, fft_size]
+x_hat: (2, 1, 1, 768) 
+llr_est: (2, 1, 1, 3072)
+b_hat: (2, 1, 1, 3072)
+BER Value: 0.2317
+Perfect_csi: BER Value: 0.08251953125
+
+ApplyOFDMChannel error: (64, 1, 1, 1, 16, 1, 76)
+#inputs x :  [batch size, num_tx, num_tx_ant, num_ofdm_symbols, fft_size], complex
+#h_freq : [batch size, num_rx, num_rx_ant, num_tx, num_tx_ant, num_ofdm_symbols, num_subcarriers], complex Channel frequency responses
+#h_freq: (64, 1, 1, 1, 16, 1, 76)
+ValueError: operands could not be broadcast together with shapes (64,1,1,1,16,1,76) (64,1,1,1,2,14,76) 
+operands could not be broadcast together with shapes (64,1,1,1,16,1,76) (64,1,1,1,2,14,76) 
+
+h:(64, 1, 1, 1, 16, 1, 76), x: (64, 1, 1, 1, 2, 14, 76)
+(64, 1, 1, 1, 16, 1, 76), x: (64, 1, 1, 1, 2, 14, 76)
+
+h_b: (64, 1, 1, 1, 16, 10, 1), tau_b: (64, 1, 1, 10) (64, 1, 1, 1, 16, 1, 76)
+
+
+
