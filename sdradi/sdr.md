@@ -24,6 +24,26 @@ Due to the limited 56 MHz bandwidth, which is insufficient for radar sensing, we
 
 # SDR Devices
 
+## Linux Kernel
+The Linux kernel in this [repository](https://github.com/analogdevicesinc/linux) is the Linux kernel from Xilinx together with drivers & patches applied from Analog Devices. [Build the ADI Linux Kernel](https://wiki.analog.com/resources/tools-software/linux-drivers-all#building_the_adi_linux_kernel).
+
+The Analog Devices kernel can be built to run on the Raspberry PI boards. Ref: [Linux Kernel for Raspberry Pi](https://wiki.analog.com/resources/tools-software/linux-build/generic/raspberrypi). For example, the kernel version of Raspberry Pi is 5.10 so that the correspondent latest rpi branch is rpi-5.10.y.
+
+[Raspberry Pi Linux Kernel page](https://www.raspberrypi.com/documentation/computers/linux_kernel.html)
+
+```bash
+$ sudo apt install git
+$ sudo apt install bc bison flex libssl-dev make
+git clone https://github.com/analogdevicesinc/linux
+cd linux
+$ KERNEL=kernel7l
+/linux $ ARCH=arm make adi_bcm2711_defconfig
+#
+# configuration written to .config
+#
+/linux $ ARCH=arm make #this takes a long time
+```
+
 ## USB Access to ADI SDR devices
 
 ADALM-PLUTO is based on Analog Devices AD9363--Highly Integrated RF Agile Transceiver and Xilinx® Zynq Z-7010 FPGA
@@ -263,6 +283,13 @@ sudo apt-get install usbip #To list all local USB-emulated network devices using
 analog@phaser:~ $ sudo usbip list -local
 ```
 
+Upgrade:
+```bash
+ssh root@192.168.1.67 #analog@192.168.1.69 #password: analog
+root@phaser:~# sudo apt update
+root@phaser:~# sudo apt full-upgrade
+```
+
 To view all TCP or UDP ports that are being listened on, along with the associated services and socket status (you can see the port `50901` is for iiod): 
 ```bash
 sudo netstat -tunlp
@@ -351,6 +378,21 @@ $ exit
 ```
 There is another `device_reboot` option in [link](https://wiki.analog.com/university/tools/pluto/devs/reboot)
 
+When multiple SDR devices available
+```bash
+lkk@lkk-intel12:~$ iio_attr -a -C fw_version 
+Multiple contexts found. Please select one using --uri:
+	0: 192.168.2.1 (Analog Devices PlutoSDR Rev.C (Z7010-AD9361)), serial=10447376de0b000f00003000f0ba975eb8 [ip:pluto.local]
+	1: 0456:b673 (Analog Devices Inc. PlutoSDR (ADALM-PLUTO)), serial=10447376de0b000f00003000f0ba975eb8 [usb:1.10.5]
+$ iio_attr -C fw_version  --uri usb:1.10.5
+fw_version: v0.38
+$ iio_attr -C fw_version --uri ip:pluto.local
+fw_version: v0.38
+$ iio_info -u ip:pluto.local
+$ iio_info -u usb:1.10.5
+$ iio_info -u ip:192.168.2.1
+```
+
 ## TDD Engine
 The latest version of `pyadi-iio' from pip is `0.016` and does not contain the tddn. Need to install the pyadi-iio from source.
 ```bash
@@ -382,19 +424,41 @@ pip install tensorflow[and-cuda]==2.14.0 #https://www.tensorflow.org/install/sou
 #install nvidia_cudnn_cu11-8.7.0.84, nvidia_cuda_nvcc_cu11-11.8.89, tensorrt-8.5.3.1-cp310
 ```
 ## SDR Device
-Run the test code for SDR:
+
+### Communication Test code
+Run the test code `.\sdradi\pysdr.py` for SDR (revise the IP for the device):
 ```bash
-(mycondapy310) PS D:\Developer\radarsensing> python .\sdradi\pysdr.py #transmitting a QPSK signal in the 915 MHz band, receiving it, and plotting the PSD
-python sdradi/myad9361.py #perform transmit and plot the spectrum
+python sdradi/pysdr.py #transmitting a QPSK signal in the 915 MHz band, receiving it, and plotting the PSD
+
 ```
 
+Perform transmit test, detect peak frequency, and plot the spectrum:
+```bash
+python sdradi/myad9361.py
+```
+The result figure is 
+![Peak Spectrum](../imgs/peakspectrum.png)
+
+### Communication class
 Newly added `myad9361class.py` that put all sdr related code into one class. Run the following code to test the SDR class and perform signal detection
 ```bash
 python sdradi/myad9361class.py
 ```
-This code contains two test cases: 1) `test_SDRclass`, which performs continuous data transmission and receive; and 2) `test_ofdm_SDR`, which performs correction for the received sample and detect the starting point. 
+This code contains several test cases: 
 
-Integrate the `myofdm.py` with `myad9361class.py` to transmit the simple OFDM signal. The `test_ofdm_SDR` mainly tests the `SDR_RXTX_offset` function. The output format is `[IQ, SINR, SDR_TX_GAIN, SDR_RX_GAIN, fails + 1, corr, sdr_time]` where
+1) `test_SDRclass`, which performs continuous data transmission and receive. The result figure is
+![txrxcontinous](../imgs/txrxcontinous.png)
+
+2) `test_SDRTDD`, which performs TDD test for communication.
+
+3) `test_ofdm_SDR`, which performs correction for the received sample and detect the starting point. 
+
+### OFDM with SDR
+`sdradi/myofdm.py` contains OFDM related code. `myad9361class.py` integrates the `myofdm.py` to transmit the OFDM signals. 
+  * The `test_ofdm_SDR` function mainly tests the `SDR_RXTX_offset` function with basic OFDM signal. 
+  * The `test_ofdmmimo_SDR` function integrates the OFDM MIMO signal.
+
+The output format is `[IQ, SINR, SDR_TX_GAIN, SDR_RX_GAIN, fails + 1, corr, sdr_time]` where
   * IQ is the IQ data in format expected by demodulator
   * SINR is the measured SINR based on noise power measurement during the unmodulated symbols, and the mean power of the received and synchronised signal.
   * SDR_RX_GAIN similar to above, the actual RX setting
@@ -402,7 +466,7 @@ Integrate the `myofdm.py` with `myad9361class.py` to transmit the simple OFDM si
   * corr os the Pearson correlation of the tx and rx signals
   * sdr_time is the measured time from start of the SDR process to finishing it. When debug is enabled, it takes about 1.4sec and without it takes 25ms in authors computer.
 
-The result figure (plotted by `plot_noisesignalPSD` in `processing.py`) for Pulto SDR is shown as:
+The result figure of `test_ofdm_SDR` (plotted by `plot_noisesignalPSD` in `processing.py`) for Pulto SDR is shown as:
 
 ![correctionresults](../imgs/correctionresults.png "Receiver Correction results")
 

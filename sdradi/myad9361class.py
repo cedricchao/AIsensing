@@ -178,7 +178,7 @@ class SDR:
         # Set the hardware gain for both TX and RX
         if tx1_gain is not None:
             self.sdr.tx_hardwaregain_chan0 = tx1_gain  # TX gain
-        elif self.Tx_CHANNEL==2 and tx2_gain is not None:
+        if self.Tx_CHANNEL==2 and tx2_gain is not None:
             self.sdr.tx_hardwaregain_chan1 = tx2_gain
         #self.sdr.rx_hardwaregain_chan0 = self.SDR_RX_GAIN  # RX gain -30
 
@@ -433,12 +433,12 @@ class SDR:
         #rx_samples = np.ones(SAMPLES.shape[0] + add_td_samples, dtype=np.complex64)
         while success == 0 and fails < timeout:       
             # RX samples 
-            rx_samples = self.SDR_RX_receive(combinerule='drop', normalize=False)
+            rx_samples = self.SDR_RX_receive(combinerule='drop', normalize=True)
 
             #the use of tx_SAMPLES is for adjust_stdev and perform correlation
-            # rx_samples_normalized, rx_TTI, rx_noise, TTI_offset, TTI_corr, corr, SINR = detect_signaloffset(rx_samples, tx_SAMPLES=SAMPLES, num_samples=num_samples, leadingzeros=leadingzeros, add_td_samples=add_td_samples)
+            #rx_samples_normalized, rx_TTI, rx_noise, TTI_offset, TTI_corr, corr, SINR = detect_signaloffset(rx_samples, tx_samples=SAMPLES, num_samples=num_samples, leadingzeros=leadingzeros, add_td_samples=add_td_samples)
 
-            rx_samples_normalized, rx_TTI, rx_noise, TTI_offset, TTI_corr, corr, SINR = detect_signaloffsetv2(rx_samples, tx_SAMPLES=SAMPLES, num_samples=num_samples, leadingzeros=leadingzeros, add_td_samples=add_td_samples)
+            rx_samples_normalized, rx_TTI, rx_noise, TTI_offset, TTI_corr, corr, SINR = detect_signaloffsetv2(rx_samples, tx_samples=SAMPLES, num_samples=num_samples, leadingzeros=leadingzeros, add_td_samples=add_td_samples)
 
             if make_plot:
                 plot_noisesignalPSD(rx_samples, rx_samples_normalized, tx_SAMPLES=SAMPLES, \
@@ -652,8 +652,8 @@ def test_SDRclass(urladdress, signal_type='dds'):
     bandwidth = 4000000 #4MHz
     mysdr = SDR(SDR_IP=urladdress, SDR_FC=fc, SDR_SAMPLERATE=fs, SDR_BANDWIDTH=bandwidth)
     mysdr.SDR_TX_stop()
-    mysdr.SDR_TX_setup()
-    mysdr.SDR_RX_setup(n_SAMPLES=10000)
+    mysdr.SDR_TX_setup(tx1_gain=-10, tx2_gain=-10)
+    mysdr.SDR_RX_setup(n_SAMPLES=10000, rx1_gain=10, rx2_gain=10)
     
     time.sleep(0.3)  # Wait for settings to take effect
 
@@ -742,7 +742,7 @@ def plotfigure(ts, data0):
     axs[0].grid(True)
     axs[1].cla()  
     axs[1].semilogy(f/1e6, Pxx_den)
-    axs[1].set_ylim([1e-7, 1e2])
+    axs[1].set_ylim([1e-8, 1e2])
     axs[1].set_xlabel("frequency [MHz]") #-3e^6 3e^6
     axs[1].set_ylabel("PSD [V**2/Hz]")
     axs[1].set_title("Spectrum")
@@ -792,8 +792,8 @@ def updatefigure(axs, t, data0, data1, specf,specp):
 #PoE: "ip:192.168.1.67:50901"
 import argparse
 parser = argparse.ArgumentParser(description='MyAD9361')
-parser.add_argument('--urladdress', default="ip:192.168.2.1", type=str,
-                    help='urladdress of the device, e.g., ip:pluto.local') 
+parser.add_argument('--urladdress', default="ip:192.168.1.67:50901", type=str,
+                    help='urladdress of the device, e.g., ip:pluto.local, ip:192.168.2.1') 
 parser.add_argument('--rxch', default=1, type=int, 
                     help='number of rx channels')
 parser.add_argument('--signal', default="dds", type=str,
