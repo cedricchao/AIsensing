@@ -1,6 +1,7 @@
 import time
 import os
 from time import sleep
+from datetime import datetime
 import adi
 print(adi.__version__)
 #0.0.16 tddn not available there
@@ -203,20 +204,38 @@ def setupalldevices(sdrurl, phaserurl, Rx_CHANNEL, Tx_CHANNEL, fs, center_freq, 
     return sdr, my_phaser, BW, num_steps, ramp_time_s
 
 class RadarData:
-    def __init__(self, datapath='./data/radardata5s-1101fast3move.npy', samplerate=0.6e6, rxbuffersize=1024*16):
+    # def __init__(self, datapath='./data/radardata5s-1101fast3move.npy', samplerate=0.6e6, rxbuffersize=1024*16):
+    #     with open(datapath, 'rb') as f:
+    #         self.alldata = np.load(f)
+    #     print(len(self.alldata))
+    #     self.samplerate = samplerate
+    #     self.rxbuffersize=rxbuffersize
+    #     self.totallen=len(self.alldata)
+    #     self.Ntotalframe=int(self.totallen/rxbuffersize)-1
+    #     self.signal_freq = 100e3 #100K
+    #     self.BW = 500e6
+    #     self.ramp_time = 1e3  # us
+    #     self.ramp_time_s = self.ramp_time / 1e6
+    #     self.num_steps = 1000
+    
+    def __init__(self, datapath='output/Radarsaveddata_2024_07_31.npy'):
         with open(datapath, 'rb') as f:
-            self.alldata = np.load(f)
-        print(len(self.alldata))
-        self.samplerate = samplerate
-        self.rxbuffersize=rxbuffersize
+            alldata = np.load(f, allow_pickle=True)
+        datadict=alldata.item() #get the dict
+        print(datadict['allrxdata'].shape) #8192*100
+        self.alldata = datadict['allrxdata']
         self.totallen=len(self.alldata)
-        self.Ntotalframe=int(self.totallen/rxbuffersize)-1
-        self.signal_freq = 100e3 #100K
-        self.BW = 500e6
-        self.ramp_time = 1e3  # us
-        self.ramp_time_s = self.ramp_time / 1e6
-        self.num_steps = 1000
-        
+        self.rxbuffersize=datadict['rxbuffersize']
+        self.Ntotalframe=int(self.totallen/self.rxbuffersize)-1
+        self.samplerate=datadict['sample_rate']
+        self.signal_freq = datadict['signal_freq']
+        self.bandwidth = datadict['sdr_bandwidth']
+        # if datadict['phaserurl'] is not None:
+        #     self.ramp_time_s = datadict['ramp_time_s']
+        #     self.BW = datadict['chirp_bandwidth']
+        #     self.num_steps = datadict['num_steps']
+        #     self.fft_size = datadict['fft_size']
+
     def returnparameters(self):
         c = 3e8
         fs= int(self.samplerate)
@@ -242,10 +261,39 @@ class RadarData:
         timedelta=rxt-start
         self.currentindex= self.currentindex+1
         return currentdata, len(currentdata), self.currentindex
+    
+    def plotfigure(self, subset=10):
+        fs= int(self.samplerate)
+        ts = 1/float(fs)
+        num_samps = self.rxbuffersize*subset #self.fft_size*subset
+        data0 = self.alldata.real[0:num_samps*2]
+        #plotfigure(ts, datadict['allrxdata'].real[0:num_samps*2])
+        Nperiod=int(2*fs/num_samps)
+
+        f, Pxx_den = signal.periodogram(data0, int(1/ts))
+        Npoints=len(data0)
+        t = (ts*1000)*np.arange(Npoints) #second to ms
+        fig, axs = plt.subplots(2, 1, layout='constrained', figsize=(12,6))
+        axs[0].cla()  
+        axs[0].plot(t, data0.real, marker="o", ms=2, color="red")  # Only plot real part
+        #axs[0].plot(t, data1.real, marker="o", ms=2, color="blue")
+        #axs[0].set_xlim(0, 2)
+        axs[0].set_xlabel('Time (ms)')
+        axs[0].set_ylabel('data0')
+        axs[0].set_title("Time Domain Dual Ch Data")
+        axs[0].grid(True)
+        axs[1].cla()  
+        axs[1].semilogy(f/1e6, Pxx_den)
+        axs[1].set_ylim([1e-7, 1e2])
+        axs[1].set_xlabel("frequency [MHz]") #-3e^6 3e^6
+        axs[1].set_ylabel("PSD [V**2/Hz]")
+        axs[1].set_title("Spectrum")
+        plt.show()
+        plt.savefig('radardata.pdf')
 
 
 class PhaserDevice:
-    def __init__(self, phaserurl, sdr, vco_freq, output_freq=10.25e9, BW=500e6, ramp_time=0.5e3, device_mode="rx", Blackman= True, tddmode=False):
+    def __init__(self, phaserurl, sdr, vco_freq, output_freq=10.25e9, BW=500e6, ramp_time=0.5e3, device_mode="rx", Blackman= True, tddmode=False, ramp_mode="disabled"):
         #my_phaser = adi.CN0566(uri=rpi_ip, sdr=my_sdr)
         my_phaser = CN0566(uri=phaserurl, sdr=sdr)
         print("Phaser url: ", my_phaser.uri)
@@ -272,9 +320,9 @@ class PhaserDevice:
     
         self.my_phaser = my_phaser
         self.setupPiGPIO() #new added
-        self.setupADF4159(vco_freq=vco_freq, ramp_time=ramp_time, BW=BW, tddmode=tddmode)
+        self.setupADF4159(vco_freq=vco_freq, ramp_time=ramp_time, BW=BW, tddmode=tddmode, ramp_mode=ramp_mode)
     
-    def setupADF4159(self, vco_freq=12.145e9, ramp_time=0.5e3, BW= 500e6, tddmode=False):
+    def setupADF4159(self, vco_freq=12.145e9, ramp_time=0.5e3, BW= 500e6, tddmode=False, ramp_mode="disabled"):
         # Configure the ADF4159 Rampling PLL
         my_phaser = self.my_phaser
         #BW = 500e6
@@ -307,7 +355,7 @@ class PhaserDevice:
             ##"continuous_triangular"  # ramp_mode can be:  "disabled", "continuous_sawtooth", "continuous_triangular", "single_sawtooth_burst", "single_ramp_burst"
             my_phaser.tx_trig_en = 1  # start a ramp with TXdata
         else:
-            my_phaser.ramp_mode = "continuous_triangular"
+            my_phaser.ramp_mode = ramp_mode #"disabled" #"continuous_triangular"
             my_phaser.tx_trig_en = 0  # start a ramp with TXdata
         my_phaser.sing_ful_tri = (
             0  # full triangle enable/disable -- this is used with the single_ramp_burst mode
@@ -350,14 +398,40 @@ class PhaserDevice:
 class RadarDevice:
     def __init__(self, sdrurl, phaserurl, sample_rate=0.6e6, center_freq=2.1e9, \
                  rxbuffersize = 1024*8, sdr_bandwidth=1e6, rx_gain=20, Rx_CHANNEL = 2, Tx_CHANNEL = 2,\
-                signal_freq = 100e3, chirp_bandwidth = 4000000, output_freq = 10e9, ramp_time = 0.5e3, \
-                    num_chirps = 1, tddmode=False):
+                signal_freq = 100e3, chirp_bandwidth = 4000000, output_freq = 10e9, ramp_time = 0.5e3, ramp_mode = "disabled", \
+                    num_chirps = 1, tddmode=False, savedata=False, savefolder="output", savefilename=None):
+        #ramp_mode can be:  "disabled", "continuous_sawtooth", "continuous_triangular", "single_sawtooth_burst", "single_ramp_burst"
         self.sdrurl = sdrurl
         self.Rx_CHANNEL = Rx_CHANNEL
         self.Tx_CHANNEL = Tx_CHANNEL
         self.center_freq = center_freq #2.1e9 #fc=2.1G
         self.rxbuffersize=rxbuffersize #fft_size
         self.tddmode = tddmode
+        self.savedata = savedata
+        if savedata:
+            self.saveddatadict={}
+            self.saveddatadict['sdrurl']=sdrurl
+            self.saveddatadict['phaserurl']=phaserurl
+            self.saveddatadict['rx_num']=[]
+            self.saveddatadict['timedelta']=[]
+            self.saveddatadict['starttime']=datetime.today().strftime('%Y-%m-%d %H:%M:%S')
+            self.saveddatadict['sample_rate'] = sample_rate
+            self.saveddatadict['center_freq'] = center_freq
+            self.saveddatadict['sdr_bandwidth'] = sdr_bandwidth
+            self.saveddatadict['rxbuffersize'] = rxbuffersize
+            self.saveddatadict['rx_gain'] = rx_gain
+            self.saveddatadict['Rx_CHANNEL'] = Rx_CHANNEL
+            self.saveddatadict['Tx_CHANNEL'] = Tx_CHANNEL
+            self.saveddatadict['signal_freq'] = signal_freq
+            self.saveddatadict['chirp_bandwidth'] = chirp_bandwidth
+            self.saveddatadict['output_freq'] = output_freq
+
+            self.allrxdata = np.empty(0, dtype=np.complex_) #Default is numpy.float64.
+            self.savefolder = savefolder
+            if savefilename is not None:
+                self.savefilename = savefilename
+            else:
+                self.savefilename = f"Radarsaveddata_{datetime.today().strftime('%Y_%m_%d')}.npy"
         self.mysdr = SDR(SDR_IP=sdrurl, SDR_FC=self.center_freq, \
                         SDR_SAMPLERATE=sample_rate, SDR_BANDWIDTH=sdr_bandwidth, \
                             Rx_CHANNEL=Rx_CHANNEL, Tx_CHANNEL=Tx_CHANNEL)
@@ -375,15 +449,22 @@ class RadarDevice:
         #num_steps = 500
         self.num_steps = int(ramp_time)    # in general it works best if there is 1 step per us
         vco_freq = int(output_freq + signal_freq + center_freq) #12.1GHz
-        myphaser = PhaserDevice(phaserurl=phaserurl, sdr=self.mysdr.sdr, \
-                                vco_freq=vco_freq, output_freq=output_freq,\
-                                    BW=chirp_bandwidth, \
-                                    ramp_time=ramp_time, tddmode=tddmode)
+        if phaserurl is not None:
+            myphaser = PhaserDevice(phaserurl=phaserurl, sdr=self.mysdr.sdr, \
+                                    vco_freq=vco_freq, output_freq=output_freq,\
+                                        BW=chirp_bandwidth, \
+                                        ramp_time=ramp_time, tddmode=tddmode)
+            #Read parameters from phaser device
+            self.ramp_time = myphaser.my_phaser.freq_dev_time
+            self.ramp_time_s = self.ramp_time / 1e6
+        else:
+            myphaser = None
+            self.ramp_time = None
+            self.ramp_time_s = None
+            print("Phaser device not available!")
         self.myphaser = myphaser
 
-        #Read parameters from device
-        self.ramp_time = myphaser.my_phaser.freq_dev_time
-        self.ramp_time_s = self.ramp_time / 1e6
+        #Read parameters from SDR device
         self.sample_rate = int(self.mysdr.sdr.sample_rate) #0.6MHz
         self.fft_size = int(self.mysdr.sdr.rx_buffer_size) #8192
 
@@ -411,8 +492,9 @@ class RadarDevice:
 
     def returnparameters(self):
         #Read parameters from device
-        self.ramp_time = self.myphaser.my_phaser.freq_dev_time
-        self.ramp_time_s = self.ramp_time / 1e6
+        if self.myphaser is not None:
+            self.ramp_time = self.myphaser.my_phaser.freq_dev_time
+            self.ramp_time_s = self.ramp_time / 1e6
         self.sample_rate = int(self.mysdr.sdr.sample_rate) #0.6MHz
         self.fft_size = int(self.mysdr.sdr.rx_buffer_size) #8192
 
@@ -420,14 +502,22 @@ class RadarDevice:
         self.c = c
         fs= int(self.sample_rate)
         freq = np.linspace(-fs / 2, fs / 2, self.fft_size)
-        self.slope = self.bandwidth / self.ramp_time_s
-        print("Slope: %0.2fMHz/s" % (self.slope / 1e6))
-        self.N_s = int(self.ramp_time_s * fs) #Number ADC sampling points in each chirp, 600
-        self.N_c = int(self.fft_size/self.N_s)-1 #number of chirps in fft_size
-        #dist = (freq - self.signal_freq) * c / (4 * self.slope)
-        dist = (freq - self.signal_freq) * c / (2 * self.slope)
-        range_resolution = c / (2 * self.bandwidth) #0.3
-        range_x = (self.signal_freq) * c / (4 * self.slope) #15
+        if self.ramp_time_s is not None:
+            self.slope = self.bandwidth / self.ramp_time_s
+            print("Slope: %0.2fMHz/s" % (self.slope / 1e6))
+            self.N_s = int(self.ramp_time_s * fs) #Number ADC sampling points in each chirp, 600
+            self.N_c = int(self.fft_size/self.N_s)-1 #number of chirps in fft_size
+            #dist = (freq - self.signal_freq) * c / (4 * self.slope)
+            dist = (freq - self.signal_freq) * c / (2 * self.slope)
+            range_resolution = c / (2 * self.bandwidth) #0.3
+            range_x = (self.signal_freq) * c / (4 * self.slope) #15
+        else:
+            self.slope = 0
+            self.N_s = 0
+            self.N_c = 0
+            dist = 0
+            range_resolution = 0
+            range_x = 0
 
         print(
             """
@@ -448,6 +538,21 @@ class RadarDevice:
                 signal_freq=self.signal_freq / 1e3, #100KHz
             )
         )
+        if self.savedata:
+            self.saveddatadict['c']=c
+            self.saveddatadict['bandwidth']=self.bandwidth
+            self.saveddatadict['num_steps']=self.num_steps
+            self.saveddatadict['ramp_time_s']=self.ramp_time_s
+            self.saveddatadict['slope']=self.slope
+            self.saveddatadict['N_c']=self.N_c
+            self.saveddatadict['N_s']=self.N_s
+            self.saveddatadict['freq']=freq
+            self.saveddatadict['dist']=dist
+            self.saveddatadict['range_resolution']=range_resolution
+            self.saveddatadict['signal_freq']=self.signal_freq
+            self.saveddatadict['range_x']=range_x
+            self.saveddatadict['fft_size']=self.fft_size
+            self.saveddatadict['rxbuffersize']=self.rxbuffersize
         return c, self.bandwidth, self.num_steps, self.ramp_time_s, \
             self.slope, self.N_c, self.N_s, freq, dist, range_resolution, \
                 self.signal_freq, range_x, self.fft_size, self.rxbuffersize
@@ -497,6 +602,17 @@ class RadarDevice:
             #self.sdr.tx([self.iq * 0.5, self.iq])  # only send data to the 2nd channel (that's all we need)
             self.mysdr.SDR_TX_send(SAMPLES=self.iq * 0.5, SAMPLES2=self.iq, leadingzeros=leadingzeros, cyclic=cyclic)
     
+    def sdronly_txrx(self, signal_type='dds'):
+        c, BW, num_steps, ramp_time_s, slope, N_c, N_s, \
+        freq, dist, range_resolution, signal_freq, range_x, \
+        fft_size, rxbuffersize = self.returnparameters()
+
+        f_signal = self.signal_freq #1MHz
+        N = int(self.fft_size)#sdr.rx_buffer_size) #data length, only needed for sin
+        self.mysdr.SDR_TX_signalgen(signal_type=signal_type, f_signal=f_signal, N=N, cyclic=True)
+        alldata0, processtime = self.mysdr.SDR_RX_receive_continuous(T_len = 0.2, spectrum=False, plot_flag = False)
+        if self.savedata:
+            self.allrxdata = alldata0
 
     def setupTDD(self, num_chirps = 1):
         """ Synchronize chirps to the start of each Pluto receive buffer
@@ -575,12 +691,22 @@ class RadarDevice:
 
         dist = (freq - self.signal_freq) * self.c / (2 * slope)
         self.myphaser.set_freqdevrange(bw=new_bw)
+        if self.savedata:
+            self.saveddatadict['setrangerestime']=datetime.today().strftime('%Y-%m-%d %H:%M:%S')
+            self.saveddatadict['new_bw'] = new_bw
+            self.saveddatadict['new_slope'] = slope
+            self.saveddatadict['new_dist'] = dist
         return slope, freq, dist
 
     def steer_angle(self, angle):
         self.myphaser.steer_angle(angle=angle)
 
     def stop_device(self):
+        if self.savedata:
+            self.saveddatadict['closetime']=datetime.today().strftime('%Y-%m-%d %H:%M:%S')
+            self.saveddatadict['allrxdata']=self.allrxdata
+            create_folder_and_save_array(self.savefolder, self.saveddatadict, filename=self.savefilename)
+            #np.save(self.datapath, self.saveddatadict)
         self.mysdr.SDR_TX_stop()
         if self.tddmode:
             # disable TDD and revert to non-TDD (standard) mode
@@ -606,6 +732,11 @@ class RadarDevice:
         datalen=len(data.real)
         datarate=datalen*4/timedelta/1e6 #Mbps, complex data is 4bytes
         print("Data rate at ", datarate, "Mbps.") #7-8Mbps in 10240 points, 10Mbps in 102400points, single channel in 19-20Mbps
+        if self.savedata:
+            self.saveddatadict['rx_num'].append(datalen)
+            self.saveddatadict['timedelta'].append(timedelta)
+            #self.allrxdata = np.empty(0, dtype=np.complex_) #Default is numpy.float64.
+            self.allrxdata = np.concatenate((self.allrxdata, data))
         return data, datalen
     
     def get_spectrum(self):
@@ -655,6 +786,8 @@ class RadarDevice:
         return s_dbfs_cfar, s_dbfs_threshold
 
 def create_folder_and_save_array(folder_path, array, filename='data.npy'):
+    start_time = datetime.now() 
+  
     # Check if the folder exists, create it if not
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
@@ -662,7 +795,11 @@ def create_folder_and_save_array(folder_path, array, filename='data.npy'):
     # Save the NumPy array to a file (e.g., 'data.npy') in the folder
     np.save(os.path.join(folder_path, filename), array)
 
-def radardata_collect(phaserurladdress, ad9361urladdress, Rx_CHANNEL, Tx_CHANNEL, signal_type, plot_flag, filename='radardata5s-0616a.npy'):
+    end_time = datetime.now() 
+    time_difference = (end_time - start_time).total_seconds() * 10**3
+    print("Save time of data is: ", time_difference, "ms") 
+
+def radardata_collect_old(phaserurladdress, ad9361urladdress, Rx_CHANNEL, Tx_CHANNEL, signal_type, plot_flag, filename='radardata5s-0616a.npy'):
     # Configure properties
     #fs= 6000000 #6MHz
     fs = 0.6e6 #0.6M
@@ -734,37 +871,92 @@ def radardata_collect(phaserurladdress, ad9361urladdress, Rx_CHANNEL, Tx_CHANNEL
     #     np.save(f, alldata0)
     print(len(alldata0)) #1196032
 
-def main():
-    args = parser.parse_args()
-    phaserurladdress = args.phaserurladdress #urladdress #"ip:pluto.local"
-    ad9361urladdress = args.ad9361urladdress
-    Rx_CHANNEL = args.rxch
-    Tx_CHANNEL = args.txch
-    signal_type = args.signal
-    plot_flag = args.plot
+def main(UseRadarDevice = True, UsePhaserDevice = False, tddmode =False, signaltype='dds'):
+    # args = parser.parse_args()
+    # phaserurladdress = args.phaserurladdress #urladdress #"ip:pluto.local"
+    # ad9361urladdress = args.ad9361urladdress
+    # Rx_CHANNEL = args.rxch
+    # Tx_CHANNEL = args.txch
+    # signal_type = args.signal
+    # plot_flag = args.plot
 
-    radardata_collect(phaserurladdress, ad9361urladdress, Rx_CHANNEL, Tx_CHANNEL, signal_type, plot_flag, filename='radardata5s-0616a.npy')
     
     
+    #tddmode =False # Use TDD mode or not
+    #signaltype='sinusoid'#'sinusoid' #'OFDM'
+
+    if UseRadarDevice:
+        baseip = 'ip:192.168.1.67' #'ip:phaser'
+        sdrurl = baseip+":50901"  # "ip:pluto.local" #ip:phaser.local:50901
+        if UsePhaserDevice:
+            phaserurl = baseip  # "ip:phaser.local"
+        else:
+            phaserurl = None
+    else: #Pluto SDR only
+        sdrurl = "ip:pluto.local" #ip:192.168.2.1
+        phaserurl = None
+    
+        #radardata_collect(phaserurladdress, ad9361urladdress, Rx_CHANNEL, Tx_CHANNEL, signal_type, plot_flag, filename='radardata5s-0616a.npy')
+    '''Key Parameters'''
+    default_chirp_bw = 500e6
+    signal_freq = 100e3
+    sample_rate = 0.6e6*5  # 0.6M
+    fs = int(sample_rate)  # 0.6MHz
+    rxbuffersize = 1024 * 8  # 1024 * 16 * 15 #fft_size
+    center_freq = 2.1e9
+    output_freq = 10e9  # 10GHz
+    ramp_time = 500  # us 0.5e3
+    num_chirps = 1 #128 for TDD mode
+    # output_freq = 12.145e9
+    # int(output_freq 10e9 + signal_freq 100e3 + center_freq 2.1e9)
+    #ramp_mode can be:  "disabled", "continuous_sawtooth", "continuous_triangular", "single_sawtooth_burst", "single_ramp_burst"
+    ramp_mode = "disabled"
+    radar = RadarDevice(sdrurl=sdrurl, phaserurl=phaserurl, sample_rate=fs, center_freq=center_freq,
+                        rxbuffersize=rxbuffersize, sdr_bandwidth=sample_rate*5, rx_gain=20, Rx_CHANNEL=2, Tx_CHANNEL=2,
+                        signal_freq=signal_freq, chirp_bandwidth=default_chirp_bw, \
+                            output_freq=output_freq, ramp_time = ramp_time, ramp_mode=ramp_mode, num_chirps=num_chirps, tddmode=tddmode,\
+                                savedata=True)
+    
+    option1=False
+    if option1==True:
+        radar.transceiversetup(signaltype=signaltype)
+        c, BW, num_steps, ramp_time_s, slope, N_c, N_s, \
+        freq, dist, range_resolution, signal_freq, range_x, \
+        fft_size, rxbuffersize = radar.returnparameters()
+        radar.transmit() 
+        Nperiod = 100
+        for r in range(Nperiod):
+            #x = sdr.rx() #1024 size array of complex
+            data, datalen = radar.receive()
+    else:
+        radar.sdronly_txrx(signal_type=signaltype)
+        
+    radar.stop_device()
+
 # piuri="ip:phaser.local:50901"
 # localuri="ip:analog.local"
 # antsdruri="ip:192.168.1.10"#connected via Ethernet with static IP
 # plutodruri="ip:192.168.2.16"#connected via USB
 
-import argparse
-parser = argparse.ArgumentParser(description='MyRadar')
-parser.add_argument('--ad9361urladdress', default="ip:192.168.1.67:50901", type=str,
-                    help='urladdress of the device') #ip:pluto.local, ip:phaser.local:50901
-parser.add_argument('--phaserurladdress', default="ip:192.168.1.67", type=str,
-                    help='urladdress of the device, ip:phaser.local')
-parser.add_argument('--rxch', default=2, type=int, 
-                    help='number of rx channels')
-parser.add_argument('--txch', default=2, type=int, 
-                    help='number of rx channels')
-parser.add_argument('--signal', default="dds", type=str,
-                    help='signal type: sinusoid, dds')
-parser.add_argument('--plot', default=False, type=bool,
-                    help='plot figure')
+# import argparse
+# parser = argparse.ArgumentParser(description='MyRadar')
+# parser.add_argument('--ad9361urladdress', default="ip:192.168.1.67:50901", type=str,
+#                     help='urladdress of the device') #ip:pluto.local, ip:phaser.local:50901
+# parser.add_argument('--phaserurladdress', default="ip:192.168.1.67", type=str,
+#                     help='urladdress of the device, ip:phaser.local')
+# parser.add_argument('--rxch', default=2, type=int, 
+#                     help='number of rx channels')
+# parser.add_argument('--txch', default=2, type=int, 
+#                     help='number of rx channels')
+# parser.add_argument('--signal', default="dds", type=str,
+#                     help='signal type: sinusoid, dds')
+# parser.add_argument('--plot', default=False, type=bool,
+#                     help='plot figure')
+
+def test_radardata():
+    radardata = RadarData(datapath='output/Radarsaveddata_2024_08_01.npy')
+    radardata.plotfigure()
 
 if __name__ == '__main__':
-    main()
+    test_radardata()
+    main(UseRadarDevice = True, UsePhaserDevice = True, tddmode =False, signaltype='dds')
