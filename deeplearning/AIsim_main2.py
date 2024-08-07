@@ -14,6 +14,7 @@ from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 import tensorflow as tf
 from matplotlib import colors
+from datetime import datetime
 
 from deepMIMO5 import get_deepMIMOdata, DeepMIMODataset, flatten_last_dims, myexpand_to_rank
 from deepMIMO5 import count_errors, count_block_errors
@@ -847,10 +848,12 @@ class Transmitter():
             plt.ylabel(r"$|a|$")
     
     def create_CDLchanneldataset(self):
-        try:
-            from sionna.channel.tr38901 import AntennaArray, CDL
-        except ImportError:
-            pass
+        # try:
+        #     #from sionna.channel.tr38901 import AntennaArray, CDL
+        #     from sionna_tf_cdl import AntennaArray, CDL
+        # except ImportError:
+        #     pass
+        from sionna_tf_cdl import AntennaArray, CDL
         # Define the number of UT and BS antennas.
         # For the CDL model, a single UT and BS are supported.
         #The CDL model only works for systems with a single transmitter and a single receiver. The transmitter and receiver can be equipped with multiple antennas.
@@ -1539,7 +1542,7 @@ class Transmitter():
         no = np.float32(no) #0.0158
 
         #we generate random batches of CIR, transform them in the frequency domain and apply them to the resource grid in the frequency domain.
-        h_b, tau_b = self.get_channelcir()
+        h_b, tau_b = self.get_channelcir() #h_b: (128, 1, 16, 1, 2, 23, 14), tau_b: (128, 1, 1, 23)
         if self.channeltype=='ofdm':
             h_out = self.get_OFDMchannelresponse(h_b, tau_b) #cir_to_ofdm_channel
             print("h_freq shape:", h_out.shape) #(64, 1, 16, 1, 2, 14, 76)
@@ -1571,7 +1574,8 @@ class Transmitter():
             saved_data['x_hat']=x_hat
             saved_data['no_eff']=no_eff
             saved_data['h_hat']=to_numpy(h_hat)
-            saved_data['err_var']=to_numpy(err_var)
+            #saved_data['err_var']=to_numpy(err_var)
+            saved_data['err_var']=err_var
             saved_data['h_perfect']=h_perfect
             saved_data['err_var_perfect']=err_var_perfect
             saved_data['b_hat']=b_hat
@@ -1583,6 +1587,7 @@ class Transmitter():
     
     def save_parameters(self):
         saved_data = {}
+        saved_data['currenttime']=datetime.today().strftime('%Y-%m-%d %H:%M:%S')
         saved_data['channeltype'] = self.channeltype
         saved_data['channeldataset'] = self.channeldataset
         saved_data['fft_size'] = self.fft_size
@@ -1590,6 +1595,12 @@ class Transmitter():
         saved_data['num_ofdm_symbols'] = self.num_ofdm_symbols
         saved_data['num_bits_per_symbol'] = self.num_bits_per_symbol
         saved_data['pilot_pattern'] = self.pilot_pattern
+        saved_data['pilots'] = self.RESOURCE_GRID.pilot_pattern.pilots #new added
+        saved_data['num_data_symbols'] = self.RESOURCE_GRID.num_data_symbols
+        saved_data['cyclic_prefix_length'] = self.RESOURCE_GRID.cyclic_prefix_length
+        saved_data['ofdm_symbol_duration'] = self.RESOURCE_GRID.ofdm_symbol_duration
+        saved_data['num_time_samples'] = self.RESOURCE_GRID.num_time_samples
+        saved_data['bandwidth'] = self.RESOURCE_GRID.bandwidth
         saved_data['scenario'] = self.scenario
         saved_data['dataset_folder'] = self.dataset_folder
         saved_data['num_ut'] = self.num_ut
@@ -1839,14 +1850,15 @@ if __name__ == '__main__':
     showfigure = True
     
     #test_DeepMIMOchannel()
-    bers, blers, BERs = sim_bersingle2(channeldataset='cdl', channeltype='time', NUM_BITS_PER_SYMBOL = 2, EBN0_DB_MIN = -5.0, EBN0_DB_MAX = 25.0, \
-                   BATCH_SIZE = 32, NUM_UT = 1, NUM_BS = 1, NUM_UT_ANT = 2, NUM_BS_ANT = 16, showfigure = False, datapathbase='data/')
-    bers, blers, BERs = sim_bersingle2(channeldataset='deepmimo', channeltype='time', NUM_BITS_PER_SYMBOL = 2, EBN0_DB_MIN = -5.0, EBN0_DB_MAX = 25.0, \
-                   BATCH_SIZE = 32, NUM_UT = 1, NUM_BS = 1, NUM_UT_ANT = 1, NUM_BS_ANT = 16, showfigure = False, datapathbase='data/')
     bers, blers, BERs = sim_bersingle2(channeldataset='cdl', channeltype='ofdm', NUM_BITS_PER_SYMBOL = 2, EBN0_DB_MIN = -5.0, EBN0_DB_MAX = 25.0, \
                    BATCH_SIZE = 128, NUM_UT = 1, NUM_BS = 1, NUM_UT_ANT = 2, NUM_BS_ANT = 16, showfigure = False, datapathbase='data/')
     bers, blers, BERs = sim_bersingle2(channeldataset='deepmimo', channeltype='ofdm', NUM_BITS_PER_SYMBOL = 2, EBN0_DB_MIN = -5.0, EBN0_DB_MAX = 25.0, \
                    BATCH_SIZE = 128, NUM_UT = 1, NUM_BS = 1, NUM_UT_ANT = 1, NUM_BS_ANT = 16, showfigure = False, datapathbase='data/')
+    
+    bers, blers, BERs = sim_bersingle2(channeldataset='cdl', channeltype='time', NUM_BITS_PER_SYMBOL = 2, EBN0_DB_MIN = -5.0, EBN0_DB_MAX = 25.0, \
+                   BATCH_SIZE = 32, NUM_UT = 1, NUM_BS = 1, NUM_UT_ANT = 2, NUM_BS_ANT = 16, showfigure = False, datapathbase='data/')
+    bers, blers, BERs = sim_bersingle2(channeldataset='deepmimo', channeltype='time', NUM_BITS_PER_SYMBOL = 2, EBN0_DB_MIN = -5.0, EBN0_DB_MAX = 25.0, \
+                   BATCH_SIZE = 32, NUM_UT = 1, NUM_BS = 1, NUM_UT_ANT = 1, NUM_BS_ANT = 16, showfigure = False, datapathbase='data/')
     
     if cdltest is True:
         test_CDLchannel()
