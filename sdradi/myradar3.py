@@ -498,7 +498,7 @@ class RadarDevice:
             myphaser = PhaserDevice(phaserurl=phaserurl, sdr=self.mysdr.sdr, \
                                     vco_freq=vco_freq, output_freq=output_freq,\
                                         BW=chirp_bandwidth, \
-                                        ramp_time=ramp_time, tddmode=tddmode)
+                                        ramp_time=ramp_time, tddmode=tddmode, ramp_mode=ramp_mode)
             #Read parameters from phaser device
             self.ramp_time = myphaser.my_phaser.freq_dev_time
             self.ramp_time_s = self.ramp_time / 1e6
@@ -634,7 +634,7 @@ class RadarDevice:
         elif signaltype=='OFDM':
             self.iq, fs, bandwidth= create_singlechannel_complexOFDMMIMO()
             print(f"OFDMMIMO, sample rate: {fs}, bandwidth: {bandwidth}")
-            self.mysdr.SDR_RX_setup(n_SAMPLES=None, sample_rate=int(fs), rx_bandwidth=int(bandwidth))
+            #self.mysdr.SDR_RX_setup(n_SAMPLES=self.fft_size, sample_rate=int(fs), rx_bandwidth=int(bandwidth))
 
         #self.sdr._ctx.set_timeout(0)
         self.mysdr.sdr._ctx.set_timeout(30000)
@@ -643,10 +643,10 @@ class RadarDevice:
     
     def transmit(self, samples_ch1=None, samples_ch2=None, leadingzeros=0, cyclic=True):
         if samples_ch1 is not None and samples_ch2 is not None:
-            self.mysdr.SDR_TX_send(SAMPLES=samples_ch1, SAMPLES2=samples_ch2, leadingzeros=leadingzeros, cyclic=cyclic)
+            self.mysdr.SDR_TX_send(SAMPLES=samples_ch1, SAMPLES2=samples_ch2, normalize=True, leadingzeros=leadingzeros, cyclic=cyclic)
         elif self.iq is not None:
             #self.sdr.tx([self.iq * 0.5, self.iq])  # only send data to the 2nd channel (that's all we need)
-            self.mysdr.SDR_TX_send(SAMPLES=self.iq * 0.5, SAMPLES2=self.iq, leadingzeros=leadingzeros, cyclic=cyclic)
+            self.mysdr.SDR_TX_send(SAMPLES=self.iq * 0.5, SAMPLES2=self.iq, normalize=True, leadingzeros=leadingzeros, cyclic=cyclic)
     
     def sdronly_txrx(self, signal_type='dds', T_len = 0.2, leadingzeros=0, trailingzeros=0, normalize=False):
         c, BW, num_steps, ramp_time_s, slope, N_c, N_s, \
@@ -958,7 +958,7 @@ def main(UseRadarDevice = True, UsePhaserDevice = False, tddmode =False, signalt
     # output_freq = 12.145e9
     # int(output_freq 10e9 + signal_freq 100e3 + center_freq 2.1e9)
     #ramp_mode can be:  "disabled", "continuous_sawtooth", "continuous_triangular", "single_sawtooth_burst", "single_ramp_burst"
-    ramp_mode = "disabled" #"continuous_triangular" #"disabled" #"continuous_sawtooth" #
+    ramp_mode = "continuous_triangular" #"continuous_triangular" #"disabled" #"continuous_sawtooth" #
     #if savefilename is None:
     savefilename = f"Radarsaveddata_{datetime.today().strftime('%Y_%m_%d')}_{ramp_mode}_{savefilename}.npy"
     radar = RadarDevice(sdrurl=sdrurl, phaserurl=phaserurl, sample_rate=fs, center_freq=center_freq,
@@ -979,7 +979,7 @@ def main(UseRadarDevice = True, UsePhaserDevice = False, tddmode =False, signalt
             #x = sdr.rx() #1024 size array of complex
             data, datalen = radar.receive()
     else:
-        radar.sdronly_txrx(signal_type=signaltype, T_len=5)
+        radar.sdronly_txrx(signal_type=signaltype, T_len=5, leadingzeros=0, trailingzeros=0)
         
     radar.stop_device()
 
@@ -1010,6 +1010,6 @@ def test_radardata():
     print("Done")
 
 if __name__ == '__main__':
-    test_radardata()
-    main(UseRadarDevice = True, UsePhaserDevice = True, tddmode =False, signaltype='sinusoid', savefilename="moving_nozeros") #'dds' 'sinusoid'
+    #test_radardata()
+    main(UseRadarDevice = True, UsePhaserDevice = True, tddmode =False, signaltype='sinusoid', savefilename="moving2_nozeros") #'dds' 'sinusoid'
     
