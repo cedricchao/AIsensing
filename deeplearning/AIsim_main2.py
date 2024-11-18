@@ -35,6 +35,8 @@ from ldpc.encoding import LDPC5GEncoder
 from ldpc.decoding import LDPC5GDecoder
 
 import scipy
+import os
+IMG_FORMAT=".pdf" #".png"
 
 def ber_plot(ebno_dbs, bers, legend="", ylabel="BER", title="Bit Error Rate", ebno=True, xlim=None,
              ylim=None, is_bler=False, savefigpath='./data/ber.jpg'):
@@ -635,7 +637,7 @@ class Transmitter():
                  direction="uplink", num_ut = 1, num_ut_ant=2, num_bs = 1, num_bs_ant=16,\
                  batch_size =64, fft_size = 76, num_ofdm_symbols=14, num_bits_per_symbol = 4,  \
                  subcarrier_spacing=15e3, num_guard_carriers=None, pilot_ofdm_symbol_indices=None, \
-                USE_LDPC = True, pilot_pattern = "kronecker", guards = True, showfig = True, savedata=True) -> None:
+                USE_LDPC = True, pilot_pattern = "kronecker", guards = True, showfig = True, savedata=True, outputpath=None) -> None:
                 #num_guard_carriers=[15,16]
         self.channeltype = channeltype
         self.channeldataset = channeldataset
@@ -654,6 +656,7 @@ class Transmitter():
         self.num_ut_ant = num_ut_ant #num_rx #2 #4
         self.num_bs_ant = num_bs_ant #8
         self.num_time_steps = 1 #num_ofdm_symbols #??? 
+        self.outputpath = outputpath
         #[batch, num_rx, num_rx_ant, num_tx, num_tx_ant, num_paths, num_time_steps]
         if direction=="uplink": #the UT is transmitting.
             self.num_tx = self.num_ut
@@ -715,8 +718,17 @@ class Transmitter():
                                             pilot_pattern=pilot_pattern,
                                             pilot_ofdm_symbol_indices=pilot_ofdm_symbol_indices)
         if showfig:
-            RESOURCE_GRID.show() #14(OFDM symbol)*76(subcarrier) array=1064
-            RESOURCE_GRID.pilot_pattern.show();
+            fig = RESOURCE_GRID.show() #14(OFDM symbol)*76(subcarrier) array=1064
+            if outputpath is not None:
+                figurename=os.path.join(outputpath, "RESOURCE_GRID"+IMG_FORMAT)
+                fig.savefig(figurename)
+
+            figs = RESOURCE_GRID.pilot_pattern.show()
+            if outputpath is not None:
+                for i, fig in enumerate(figs):
+                    figurename=os.path.join(outputpath, f"pilot_pattern_{i}"+IMG_FORMAT)
+                    fig.savefig(figurename)
+
             #The pilot patterns are defined over the resource grid of *effective subcarriers* from which the nulled DC and guard carriers have been removed. 
             #This leaves us in our case with 76 - 1 (DC) - 5 (left guards) - 6 (right guards) = 64 effective subcarriers.
 
@@ -731,10 +743,13 @@ class Transmitter():
                         markerfmt="C{}.".format(i), linefmt="C{}-".format(i),
                         label="Stream {}".format(i))
             plt.legend()
+            if outputpath is not None:
+                figurename=os.path.join(outputpath, "PilotSeq"+IMG_FORMAT)
+                plt.savefig(figurename)
             print("Average energy per pilot symbol: {:1.2f}".format(np.mean(np.abs(RESOURCE_GRID.pilot_pattern.pilots[0,0])**2)))
         self.RESOURCE_GRID = RESOURCE_GRID
         print("RG num_ofdm_symbols", RESOURCE_GRID.num_ofdm_symbols) #14
-        print("RG ofdm_symbol_duration", RESOURCE_GRID.ofdm_symbol_duration)
+        print("RG ofdm_symbol_duration", RESOURCE_GRID.ofdm_symbol_duration) #1.7982456140350878e-05
         #from sionna.channel import subcarrier_frequencies
         self.frequencies = subcarrier_frequencies(RESOURCE_GRID.fft_size, RESOURCE_GRID.subcarrier_spacing) #corresponding to the different subcarriers
         #76, 60k
@@ -744,7 +759,7 @@ class Transmitter():
         #num_bits_per_symbol = 4
         # Codeword length
         n = int(RESOURCE_GRID.num_data_symbols * num_bits_per_symbol) #num_data_symbols: if empty 1064*4=4256, else, 768*4=3072
-        self.n = n
+        self.n = n #1536
 
         #USE_LDPC = True
         if USE_LDPC:
@@ -758,7 +773,7 @@ class Transmitter():
         else:
             coderate = 1
             # Number of information bits per codeword
-            k = int(n * coderate)  
+            k = int(n * coderate)  #1536
         self.k = k # Number of information bits per codeword, 3072
         self.USE_LDPC = USE_LDPC
         self.coderate = coderate
@@ -846,6 +861,10 @@ class Transmitter():
             plt.stem(tau_b[0,0,0,:]/1e-9, np.abs(h_b)[0,0,0,0,0,:,0])#10 different pathes
             plt.xlabel(r"$\tau$ [ns]")
             plt.ylabel(r"$|a|$")
+            if self.outputpath is not None:
+                figurename=os.path.join(self.outputpath, "Channel_impulse"+IMG_FORMAT)
+                plt.savefig(figurename)
+            
     
     def create_CDLchanneldataset(self):
         # try:
@@ -932,6 +951,9 @@ class Transmitter():
             plt.stem(tau_b[0,0,0,:]/1e-9, np.abs(h_b)[0,0,0,0,0,:,0])#10 different pathes
             plt.xlabel(r"$\tau$ [ns]")
             plt.ylabel(r"$|a|$")
+            if self.outputpath is not None:
+                figurename=os.path.join(self.outputpath, "Channel_cir"+IMG_FORMAT)
+                plt.savefig(figurename)
 
             plt.figure()
             plt.title("Time evolution of path gain")
@@ -942,6 +964,9 @@ class Transmitter():
             plt.legend(["Real part", "Imaginary part"])
             plt.xlabel(r"$t$ [us]")
             plt.ylabel(r"$a$");
+            if self.outputpath is not None:
+                figurename=os.path.join(self.outputpath, "Time_evolution_path"+IMG_FORMAT)
+                plt.savefig(figurename)
         
         return h_b, tau_b
 
@@ -971,6 +996,9 @@ class Transmitter():
             plt.xlabel("OFDM Symbol Index")
             plt.ylabel(r"$h$")
             plt.legend(["Real part", "Imaginary part"]);
+            if self.outputpath is not None:
+                figurename=os.path.join(self.outputpath, "OFDMchannelresponse"+IMG_FORMAT)
+                plt.savefig(figurename)
         return h_freq
     
     def get_timechannelresponse(self, h_b, tau_b):
@@ -986,6 +1014,9 @@ class Transmitter():
             plt.stem(np.abs(h_time[0,0,0,0,0,0]))
             plt.xlabel(r"Time step $\ell$")
             plt.ylabel(r"$|\bar{h}|$");
+            if self.outputpath is not None:
+                figurename=os.path.join(self.outputpath, "Discrete_time_channel"+IMG_FORMAT)
+                plt.savefig(figurename)
         return h_time
     
 
@@ -1015,8 +1046,11 @@ class Transmitter():
                 plt.plot(np.imag(h_freq_plt))
                 plt.xlabel("Subcarrier index")
                 plt.ylabel("Channel frequency response")
-                plt.legend(["Ideal (real part)", "Ideal (imaginary part)"]);
-                plt.title("Comparison of channel frequency responses");
+                plt.legend(["Ideal (real part)", "Ideal (imaginary part)"])
+                plt.title("Comparison of channel frequency responses")
+                if self.outputpath is not None:
+                    figurename=os.path.join(self.outputpath, "channel_compare"+IMG_FORMAT)
+                    plt.savefig(figurename)
 
             # Generate the OFDM channel
             channel_freq = MyApplyOFDMChannel(add_awgn=True)
@@ -1052,6 +1086,9 @@ class Transmitter():
                 plt.stem(np.abs(h_time[0,0,0,0,0,0]))
                 plt.xlabel(r"Time step $\ell$")
                 plt.ylabel(r"$|\bar{h}|$");
+                if self.outputpath is not None:
+                    figurename=os.path.join(self.outputpath, "Discrete_time_channel2"+IMG_FORMAT)
+                    plt.savefig(figurename)
             #channel_time = ApplyTimeChannel(self.RESOURCE_GRID.num_time_samples, l_tot=l_tot, add_awgn=False)
             channel_time = MyApplyTimeChannel(self.RESOURCE_GRID.num_time_samples, l_tot=l_tot, add_awgn=True)
             # OFDM modulator and demodulator
@@ -1174,6 +1211,9 @@ class Transmitter():
                 plt.ylabel("Channel frequency response")
                 plt.legend(["Ideal (real part)", "Ideal (imaginary part)", "Estimated (real part)", "Estimated (imaginary part)"]);
                 plt.title("Comparison of channel frequency responses");
+                if self.outputpath is not None:
+                    figurename=os.path.join(self.outputpath, "OFDMChannel_compare"+IMG_FORMAT)
+                    plt.savefig(figurename)
         
         # if perfect_csi:
         #     return h_perfect, err_var_perfect
@@ -1245,6 +1285,9 @@ class Transmitter():
             plt.stem(np.abs(h_time[0,0,0,0,0,0]))
             plt.xlabel(r"Time step $\ell$")
             plt.ylabel(r"$|\bar{h}|$");
+            if self.outputpath is not None:
+                figurename=os.path.join(self.outputpath, "Discrete_time_channel2"+IMG_FORMAT)
+                plt.savefig(figurename)
 
                 # OFDM modulator and demodulator
         #from sionna.ofdm import OFDMModulator, OFDMDemodulator, ZFPrecoder, RemoveNulledSubcarriers
@@ -1421,6 +1464,9 @@ class Transmitter():
             plt.ylabel("Channel frequency response")
             plt.legend(["Ideal (real part)", "Ideal (imaginary part)", "Estimated (real part)", "Estimated (imaginary part)"]);
             plt.title("Comparison of channel frequency responses");
+            if self.outputpath is not None:
+                figurename=os.path.join(self.outputpath, "TimeChannel_compare"+IMG_FORMAT)
+                plt.savefig(figurename)
 
         # if perfect_csi:
         #     return h_perfect, err_var_perfect
@@ -1430,7 +1476,7 @@ class Transmitter():
     
     def channelest_equ(self, y, no, h_b=None, tau_b=None, h_out=None, perfect_csi= False):
         print(self.RESOURCE_GRID.pilot_pattern) #<__main__.EmptyPilotPattern object at 0x7f2659dfd9c0>
-        print("Num of Pilots:", len(self.RESOURCE_GRID.pilot_pattern.pilots))
+        print("Num of Pilots:", len(self.RESOURCE_GRID.pilot_pattern.pilots)) #1
         h_hat = None
         err_var = None 
         h_perfect = None 
@@ -1469,7 +1515,7 @@ class Transmitter():
             # Reshape the array by collapsing the last two dimensions
             llr_est = llr.reshape(llr.shape[:-2] + (-1,)) #(64, 1, 16, 4256)
         else:
-            llr_est = self.mydemapper([x_hat, no_eff]) #(2, 1, 2, 3072)
+            llr_est = self.mydemapper([x_hat, no_eff]) #(128, 1, 2, 1536) #(2, 1, 2, 3072)
             #output: [batch size, num_rx, num_rx_ant, n * num_bits_per_symbol]
         
         #llr_est #(64, 1, 1, 4256)
@@ -1477,7 +1523,7 @@ class Transmitter():
             b_hat_tf = self.decoder(llr_est) #[64, 1, 1, 2128]
             b_hat = b_hat_tf.numpy()
         else:
-            b_hat = hard_decisions(llr_est, np.int32)  #(2, 1, 2, 3072)
+            b_hat = hard_decisions(llr_est, np.int32)  #(128, 1, 2, 1536) #(2, 1, 2, 3072)
         return b_hat, llr_est
 
     def receiver(self, y, no, x_rg, b=None, h_b=None, tau_b=None, h_out=None, perfect_csi= False):
@@ -1545,7 +1591,7 @@ class Transmitter():
         h_b, tau_b = self.get_channelcir() #h_b: (128, 1, 16, 1, 2, 23, 14), tau_b: (128, 1, 1, 23)
         if self.channeltype=='ofdm':
             h_out = self.get_OFDMchannelresponse(h_b, tau_b) #cir_to_ofdm_channel
-            print("h_freq shape:", h_out.shape) #(64, 1, 16, 1, 2, 14, 76)
+            print("h_freq shape:", h_out.shape) #(128, 1, 16, 1, 2, 14, 76)
         elif self.channeltype=='time':
             h_out = self.get_timechannelresponse(h_b, tau_b) #(64, 1, 16, 1, 2, 1174, 27)
 
@@ -1810,6 +1856,9 @@ def sim_bersingle2(channeldataset='deepmimo', channeltype='ofdm', NUM_BITS_PER_S
     # NUM_UT_ANT = 1 #2 is not working
     # NUM_BS_ANT = 16
 
+    if not os.path.exists(datapathbase):
+        os.makedirs(datapathbase)
+
     ebno_dbs=np.linspace(EBN0_DB_MIN, EBN0_DB_MAX, 20)
 
     datapath = datapathbase+channeldataset+'_'+channeltype
@@ -1817,7 +1866,7 @@ def sim_bersingle2(channeldataset='deepmimo', channeltype='ofdm', NUM_BITS_PER_S
                     num_ut = NUM_UT, num_ut_ant=NUM_UT_ANT, num_bs = NUM_BS, num_bs_ant=NUM_BS_ANT, \
                     batch_size =BATCH_SIZE, fft_size = 76, num_ofdm_symbols=14, num_bits_per_symbol = NUM_BITS_PER_SYMBOL,  \
                     subcarrier_spacing=60e3, \
-                    USE_LDPC = False, pilot_pattern = "kronecker", guards=True, showfig=showfigure, savedata=True)
+                    USE_LDPC = False, pilot_pattern = "kronecker", guards=True, showfig=showfigure, savedata=True, outputpath=datapathbase)
     
     b_hat, BER = eval_transceiver(ebno_db = 5.0, perfect_csi=False, datapath=datapath+"_ebno5.npy")
 
@@ -1851,14 +1900,14 @@ if __name__ == '__main__':
     
     #test_DeepMIMOchannel()
     bers, blers, BERs = sim_bersingle2(channeldataset='cdl', channeltype='ofdm', NUM_BITS_PER_SYMBOL = 2, EBN0_DB_MIN = -5.0, EBN0_DB_MAX = 25.0, \
-                   BATCH_SIZE = 128, NUM_UT = 1, NUM_BS = 1, NUM_UT_ANT = 2, NUM_BS_ANT = 16, showfigure = False, datapathbase='data/')
+                   BATCH_SIZE = 128, NUM_UT = 1, NUM_BS = 1, NUM_UT_ANT = 2, NUM_BS_ANT = 16, showfigure = showfigure, datapathbase='data/cdl/')
     bers, blers, BERs = sim_bersingle2(channeldataset='deepmimo', channeltype='ofdm', NUM_BITS_PER_SYMBOL = 2, EBN0_DB_MIN = -5.0, EBN0_DB_MAX = 25.0, \
-                   BATCH_SIZE = 128, NUM_UT = 1, NUM_BS = 1, NUM_UT_ANT = 1, NUM_BS_ANT = 16, showfigure = False, datapathbase='data/')
+                   BATCH_SIZE = 128, NUM_UT = 1, NUM_BS = 1, NUM_UT_ANT = 1, NUM_BS_ANT = 16, showfigure = showfigure, datapathbase='data/')
     
     bers, blers, BERs = sim_bersingle2(channeldataset='cdl', channeltype='time', NUM_BITS_PER_SYMBOL = 2, EBN0_DB_MIN = -5.0, EBN0_DB_MAX = 25.0, \
-                   BATCH_SIZE = 32, NUM_UT = 1, NUM_BS = 1, NUM_UT_ANT = 2, NUM_BS_ANT = 16, showfigure = False, datapathbase='data/')
+                   BATCH_SIZE = 32, NUM_UT = 1, NUM_BS = 1, NUM_UT_ANT = 2, NUM_BS_ANT = 16, showfigure = showfigure, datapathbase='data/')
     bers, blers, BERs = sim_bersingle2(channeldataset='deepmimo', channeltype='time', NUM_BITS_PER_SYMBOL = 2, EBN0_DB_MIN = -5.0, EBN0_DB_MAX = 25.0, \
-                   BATCH_SIZE = 32, NUM_UT = 1, NUM_BS = 1, NUM_UT_ANT = 1, NUM_BS_ANT = 16, showfigure = False, datapathbase='data/')
+                   BATCH_SIZE = 32, NUM_UT = 1, NUM_BS = 1, NUM_UT_ANT = 1, NUM_BS_ANT = 16, showfigure = showfigure, datapathbase='data/')
     
     if cdltest is True:
         test_CDLchannel()

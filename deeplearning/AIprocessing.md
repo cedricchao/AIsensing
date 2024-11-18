@@ -88,15 +88,49 @@ pip uninstall numpy
 pip install numpy==1.26.4
 ```
 
+In Windows WSL2:
+```bash
+(base) lkk@newalienware:~/Developer/AIsensing$ conda create --name py310cu118 python=3.10
+(base) lkk@newalienware:~/Developer/AIsensing$ conda activate py310cu118
+(py310cu118) lkk@newalienware:~/Developer/AIsensing$ nvcc -V
+nvcc: NVIDIA (R) Cuda compiler driver
+Copyright (c) 2005-2022 NVIDIA Corporation
+Built on Wed_Sep_21_10:33:58_PDT_2022
+Cuda compilation tools, release 11.8, V11.8.89
+Build cuda_11.8.r11.8/compiler.31833905_0
+(py310cu118) lkk@newalienware:~/Developer/AIsensing$ pip install tensorflow[and-cuda]==2.14.0
+(py310cu118) lkk@newalienware:~/Developer/AIsensing$ mkdir -p $CONDA_PREFIX/etc/conda/activate.d
+(py310cu118) lkk@newalienware:~/Developer/AIsensing$ echo 'CUDNN_PATH=$(dirname $(python -c "import nvidia.cudnn;print(nvidia.cudnn.__file__)"))' >> $CONDA_PREFIX/etc/conda/activate.d/env_vars.sh
+(py310cu118) lkk@newalienware:~/Developer/AIsensing$ echo 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$CONDA_PREFIX/lib/:$CUDNN_PATH/lib' >> $CONDA_PREFIX/etc/conda/activate.d/env_vars.sh
+(py310cu118) lkk@newalienware:~/Developer/AIsensing$ source $CONDA_PREFIX/etc/conda/activate.d/env_vars.sh
+(py310cu118) lkk@newalienware:~/Developer/AIsensing$ cat /home/lkk/miniconda3/envs/py310cu118/lib/python3.10/site-packages/nvidia/cudnn/include/cudnn_version.h
+(py310cu118) lkk@newalienware:~/Developer/AIsensing$ pip uninstall numpy
+  Successfully uninstalled numpy-2.1.2
+(py310cu118) lkk@newalienware:~/Developer/AIsensing$ pip install numpy==1.26.4
+(py310cu118) lkk@newalienware:~/Developer/AIsensing$ python3 -c "import tensorflow as tf; print('tf version:', tf.__version__); print(tf.config.list_physical_devices('GPU'))"
+[PhysicalDevice(name='/physical_device:GPU:0', device_type='GPU')]
+(py310cu118) lkk@newalienware:~/Developer/AIsensing$ conda install -y pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
+```
+
 Install other python packages:
 ```bash
    conda install -y -c conda-forge jupyterlab
    conda install -y ipykernel
    jupyter kernelspec list #view current jupyter kernels
    ipython kernel install --user --name=py310cu118
-   conda install -y numpy matplotlib pandas Pillow scipy pyyaml scikit-image 
+   conda install -y matplotlib pandas Pillow scipy pyyaml scikit-image 
    pip install pyqt5 pyqt6 PySide6 pyqtgraph opencv-python-headless PyOpenGL PyOpenGL_accelerate pyopengl
    pip install sionna DeepMIMO pyadi-iio
+   pip install opencv-python --upgrade
+   $ python ./sdrpysim/testmatplotlibcv2.py #test matplotlib and cv2
+   $ pip install PyQt6
+   $ sudo apt-get install libegl1-mesa libegl1-mesa-dev
+   $ ldconfig -p | grep libEGL
+   $ pip install pyqtgraph
+   $ python ./sdrpysim/pyqt6qtgraphtest.py
+
+   $ pip install sionna
+   Successfully installed absl-py-2.1.0 asttokens-2.4.1 astunparse-1.6.3 decorator-5.1.1 drjit-0.4.6 executing-2.1.0 flatbuffers-24.3.25 gast-0.6.0 google-auth-2.35.0 google-auth-oauthlib-1.2.1 google-pasta-0.2.0 grpcio-1.67.0 h5py-3.12.1 importlib-resources-6.4.5 ipydatawidgets-4.3.2 ipython-8.28.0 ipywidgets-8.0.5 jedi-0.19.1 jupyterlab-widgets-3.0.5 keras-2.15.0 libclang-18.1.1 markdown-3.7 matplotlib-inline-0.1.7 mitsuba-3.5.2 ml-dtypes-0.3.2 oauthlib-3.2.2 opt-einsum-3.4.0 parso-0.8.4 pexpect-4.9.0 prompt-toolkit-3.0.48 protobuf-4.25.5 ptyprocess-0.7.0 pure-eval-0.2.3 pyasn1-0.6.1 pyasn1-modules-0.4.1 pythreejs-2.4.2 requests-oauthlib-2.0.0 rsa-4.9 sionna-0.19.0 stack-data-0.6.3 tensorboard-2.15.2 tensorboard-data-server-0.7.2 tensorflow-2.15.1 tensorflow-estimator-2.15.0 tensorflow-io-gcs-filesystem-0.37.1 termcolor-2.5.0 traitlets-5.14.3 traittypes-0.2.1 wcwidth-0.2.13 werkzeug-3.0.4 widgetsnbextension-4.0.13 wrapt-1.14.1
 ```
 
 Installation in Mac
